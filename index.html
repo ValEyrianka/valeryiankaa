@@ -337,6 +337,7 @@ function goApp(k) {
   if (k === "pay") { S.payFrom = S.tab; return showPay(); }
   if (k === "onboard") return showOnboard();
   if (k === "plan") { S.trainSeg = "mine"; return setTab("train"); }
+  if (k === "photo") { S.tab = "food"; markTab("food"); return showPhotoReview(); }
   if (k === "summary") { S.tab = "records"; markTab("records"); return showSummary(); }
   if (k === "rem") { S.tab = "more"; markTab("more"); return showRemSettings(); }
   if (k === "checkin") { S.tab = "records"; markTab("records"); return showCheckin(); }
@@ -979,6 +980,67 @@ view.addEventListener("click", function (e) {
   if (a === "undo") return planAct({ api: "plan_mark", date: d, workoutId: w, done: false }, "Отметку сняла");
 });
 
+/* ---------- Проверка распознанного по фото ---------- */
+var PH = { data: null, edit: null, q: "" };
+function showPhotoReview() {
+  S.sub = "photo"; PH.edit = null; skeleton(); loadFoodDb();
+  api({ api: "photo_get" }).then(function (r) {
+    if (S.sub !== "photo") return;
+    if (!r || !r.ok) { PH.data = null; return drawPhotoReview(r); }
+    PH.data = r; drawPhotoReview(r);
+  });
+}
+function drawPhotoReview(r) {
+  var o = subBar("Распознано по фото");
+  if (!r || !r.ok) {
+    o += '<div class="card"><div class="muted">' + (r && r.error === "expired" ? 'Это фото уже записано или устарело. Пришли новое: кнопка «📸 Еда по фото» в чате.' : 'Не получилось загрузить. Попробуй ещё раз.') + '</div></div>';
+    view.innerHTML = o; document.getElementById("sback").onclick = function () { S.sub = null; setTab("food"); }; return;
+  }
+  o += '<div class="muted">Это прикидка на глаз. Поправь граммы или продукт, если не похоже на правду.</div>';
+  r.items.forEach(function (it, i) {
+    o += '<section class="card"><div class="row"><h2>' + esc(it.name) + '</h2><span class="muted">' + it.kcal + ' ккал</span></div>' +
+      '<div class="muted">Б ' + fmt(it.p) + ' · Ж ' + fmt(it.f) + ' · У ' + fmt(it.c) + '</div>' +
+      '<div class="stepper phst"><button data-pg="-10" data-i="' + i + '" aria-label="Минус 10 г">−</button><div class="v"><input id="pg' + i + '" data-i="' + i + '" inputmode="numeric" value="' + it.grams + '" aria-label="Граммы"><small>г</small></div><button data-pg="10" data-i="' + i + '" aria-label="Плюс 10 г">+</button></div>' +
+      '<div class="tools"><button class="btn ghost" data-prep="' + i + '">Заменить продукт</button>' + (r.items.length > 1 ? '<button class="btn ghost" data-pdel="' + i + '">Убрать</button>' : '') + '</div>' +
+      (PH.edit === i ? '<input class="search" id="pq" placeholder="Название продукта" value="' + esc(PH.q) + '" autocomplete="off"><div id="pres" class="list" style="gap:0"></div>' : '') + '</section>';
+  });
+  o += '<section class="card hero"><div class="label">Итого</div><div class="num">' + r.total.kcal + '<span class="muted" style="font:14px var(--body)"> ккал</span></div><div class="muted">Б ' + fmt(r.total.p) + ' · Ж ' + fmt(r.total.f) + ' · У ' + fmt(r.total.c) + '</div></section>' +
+    '<button class="btn primary" id="plog">Записать в дневник</button>';
+  view.innerHTML = o; window.scrollTo(0, window.scrollY);
+  document.getElementById("sback").onclick = function () { S.sub = null; setTab("food"); };
+  if (PH.edit !== null) { var q = document.getElementById("pq"); q.oninput = function () { PH.q = q.value; phResults(); }; phResults(); }
+  document.getElementById("plog").onclick = function () {
+    var b = this; b.disabled = true; b.textContent = "Записываю…";
+    api({ api: "photo_log" }).then(function (x) {
+      if (x && x.ok) { haptic("ok"); cset("home", null); S.home = null; try { localStorage.removeItem("c_" + UID + "_food_0"); } catch (e) {} toast("Записано: " + x.kcal + " ккал"); S.sub = null; setTab("food"); }
+      else { b.disabled = false; b.textContent = "Записать в дневник"; toast(x && x.error === "expired" ? "Уже записано" : "Не получилось, попробуй ещё раз"); }
+    });
+  };
+}
+function phResults() {
+  var box = document.getElementById("pres"); if (!box) return;
+  var res = PH.q.length >= 2 ? searchDb(PH.q).slice(0, 6) : [];
+  box.innerHTML = res.map(function (it) { return '<button class="item" data-pset="' + it.row + '" data-pn="' + esc(it.name) + '"><span>' + esc(it.name) + '<small>' + Math.round(it.kcal) + ' ккал / 100 г</small></span></button>'; }).join("") || (PH.q.length >= 2 ? '<div class="muted" style="padding:8px 0">Не нашла в базе. Можно оставить как есть.</div>' : '');
+}
+function phApply(req) {
+  req.api = req.api || "photo_set";
+  return api(req).then(function (r) { if (r && r.ok) { PH.data = r; PH.edit = null; PH.q = ""; drawPhotoReview(r); } else toast(r && r.error === "expired" ? "Фото уже записано" : r && r.error === "last" ? "Нужен хотя бы один продукт" : "Не получилось"); });
+}
+view.addEventListener("click", function (e) {
+  if (S.sub !== "photo" || !PH.data) return;
+  var g = e.target.closest("[data-pg]");
+  if (g) { var i = +g.dataset.i, inp = document.getElementById("pg" + i), v = Math.max(5, (parseFloat(inp.value) || 0) + parseInt(g.dataset.pg, 10)); inp.value = v; haptic(); clearTimeout(phTimer); phTimer = setTimeout(function () { phApply({ i: i, grams: v }); }, 500); return; }
+  var d = e.target.closest("[data-pdel]"); if (d) { haptic(); return phApply({ api: "photo_del", i: +d.dataset.pdel }); }
+  var rp = e.target.closest("[data-prep]"); if (rp) { PH.edit = PH.edit === +rp.dataset.prep ? null : +rp.dataset.prep; PH.q = ""; drawPhotoReview(PH.data); var q = document.getElementById("pq"); if (q) q.focus(); return; }
+  var st = e.target.closest("[data-pset]"); if (st) { haptic(); return phApply({ i: PH.edit, row: +st.dataset.pset, name: st.dataset.pn }); }
+});
+var phTimer = null;
+view.addEventListener("change", function (e) {
+  if (S.sub !== "photo" || !e.target.matches || !e.target.matches("[data-i]") || !e.target.id || e.target.id.indexOf("pg") !== 0) return;
+  var v = parseFloat(String(e.target.value).replace(",", ".")); if (!(v > 0)) return toast("Напиши граммы числом");
+  phApply({ i: +e.target.dataset.i, grams: v });
+});
+
 /* ---------- Итоги недели ---------- */
 var SUMM = { off: 0 };
 function showSummary() {
@@ -1305,9 +1367,9 @@ function showTMore() {
 
 
 /* ---------- демо-режим (?demo=1, для просмотра в браузере) ---------- */
-var DP = null, DREM = { w: 1, c: 1, f: 1, s: 1 };
+var DPH = null, DP = null, DREM = { w: 1, c: 1, f: 1, s: 1 };
 function demoPlan(req) {
-  var a = req.api; if (!/^(plan_|week_summary|rem_|home$)/.test(a)) return null;
+  var a = req.api; if (!/^(plan_|week_summary|rem_|photo_|home$)/.test(a)) return null;
   var iso = function (d) { return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2); };
   var add = function (d, n) { var x = new Date(d.getTime()); x.setDate(x.getDate() + n); return x; };
   var now = new Date(); now.setHours(12, 0, 0, 0);
@@ -1324,6 +1386,14 @@ function demoPlan(req) {
     var e2 = add(m, 6);
     return { ok: true, off: off, label: m.getDate() + (m.getMonth() !== e2.getMonth() ? " " + MS[m.getMonth()] : "") + " – " + e2.getDate() + " " + MS[e2.getMonth()], days: days, done: done, total: total, workouts: [{ id: "wA", name: T.wA }, { id: "wB", name: T.wB }, { id: "wC", name: T.wC }] };
   };
+  if (a === "photo_get" || a === "photo_set" || a === "photo_del") {
+    if (!DPH) DPH = [{ name: "Тарталетка с начинкой", grams: 120, kcal: 300, p: 7, f: 16, c: 32 }, { name: "Яйцо пашот", grams: 60, kcal: 95, p: 8, f: 7, c: 0.5 }, { name: "Сырники", grams: 210, kcal: 520, p: 26, f: 18, c: 62 }];
+    if (a === "photo_del") { if (DPH.length <= 1) return { ok: false, error: "last" }; DPH.splice(req.i, 1); }
+    if (a === "photo_set") { var it = DPH[req.i]; if (req.grams) { var k = req.grams / it.grams; it.kcal = it.kcal * k; it.p *= k; it.f *= k; it.c *= k; it.grams = req.grams; } if (req.row) { it.name = req.name; } }
+    var tot = { kcal: 0, p: 0, f: 0, c: 0 }; DPH.forEach(function (x) { tot.kcal += x.kcal; tot.p += x.p; tot.f += x.f; tot.c += x.c; });
+    return { ok: true, items: DPH.map(function (x) { return { name: x.name, grams: Math.round(x.grams), kcal: Math.round(x.kcal), p: Math.round(x.p * 10) / 10, f: Math.round(x.f * 10) / 10, c: Math.round(x.c * 10) / 10 }; }), total: { kcal: Math.round(tot.kcal), p: Math.round(tot.p), f: Math.round(tot.f), c: Math.round(tot.c) } };
+  }
+  if (a === "photo_log") return { ok: true, kcal: 915, count: 3 };
   if (a === "plan_get") return get(req.off || 0);
   if (a === "plan_set") { var ex = DP.filter(function (e) { return e.w === req.workoutId && !e.done && e.d >= iso(add(new Date(req.date + "T12:00:00"), -((new Date(req.date + "T12:00:00").getDay() + 6) % 7))) && e.d <= iso(add(new Date(req.date + "T12:00:00"), 6 - ((new Date(req.date + "T12:00:00").getDay() + 6) % 7))); })[0]; if (ex) ex.d = req.date; else DP.push({ d: req.date, w: req.workoutId, done: false }); return { ok: true }; }
   if (a === "plan_remove") { DP = DP.filter(function (e) { return !(e.d === req.date && e.w === req.workoutId); }); return { ok: true }; }
@@ -1393,7 +1463,7 @@ function startApp() {
   renderTabs(); S.home = null;
   var q = /[?&]w=([^&]+)/.exec(location.search);
   var gm = /[?&]go=([a-z]+)/.exec(location.search), go = gm ? gm[1] : "";
-  if (go && !q && go !== "food" && go !== "x") { S.clientView = true; renderTabs(); S.trainSeg = go === "ex" ? "ex" : go === "hist" ? "hist" : "mine"; S.progSeg = go === "rec" ? "rec" : "body"; var tabOf = { train: "train", ex: "train", hist: "train", progress: "records", rec: "records", more: "more" }[go]; if (tabOf) setTab(tabOf); else if (go === "book" || go === "pay" || go === "onboard" || go === "checkin" || go === "plan" || go === "summary" || go === "rem") { setTab("today"); goApp(go); } else setTab("today"); }
+  if (go && !q && go !== "food" && go !== "x") { S.clientView = true; renderTabs(); S.trainSeg = go === "ex" ? "ex" : go === "hist" ? "hist" : "mine"; S.progSeg = go === "rec" ? "rec" : "body"; var tabOf = { train: "train", ex: "train", hist: "train", progress: "records", rec: "records", more: "more" }[go]; if (tabOf) setTab(tabOf); else if (go === "book" || go === "pay" || go === "onboard" || go === "checkin" || go === "plan" || go === "summary" || go === "rem" || go === "photo") { setTab("today"); goApp(go); } else setTab("today"); }
   else if (go === "food" && !q) { S.clientView = true; renderTabs(); F.pending = true; setTab("food"); }
   else if (q) { S.clientView = true; renderTabs(); setTab("train"); openRun(decodeURIComponent(q[1])); }
   else setTab(S.trainer && !S.clientView ? "tpanel" : "today");
