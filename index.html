@@ -68,6 +68,7 @@ h2{font:600 20px/1.25 var(--body);margin:0;text-wrap:balance}
 .setrow{display:grid;grid-template-columns:24px 1fr 48px;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
 .setrow:first-child{border-top:0}
 .setrow .n{font:500 13px var(--display);color:var(--muted);text-align:center}
+.stepch{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:2px 0 12px}.stepch .fchip{padding:6px 12px;min-height:34px}
 .stepper{display:flex;align-items:center;gap:6px;min-width:0}
 .stepper button{width:44px;height:44px;border-radius:12px;border:1px solid var(--line);background:transparent;font-size:20px;cursor:pointer;flex:none}
 .stepper .v{flex:1;min-width:0;text-align:center}
@@ -164,9 +165,20 @@ i.done,.pgl.done{color:var(--ok)}i.missed,.pgl.missed{color:#c0463c}i.planned,.p
 var API_URL = "https://script.google.com/macros/s/AKfycbxSoib5pH11sG9oabyGSGGCQ5V-6nlZFQU4s85AHZrb96v_5fcOqvhi0Fb5d6VKlqKnHQ/exec";
 var tg = window.Telegram && window.Telegram.WebApp;
 var DEMO = /[?&]demo=1/.test(location.search);
+var STEPS = [1, 2.5, 5, 10];
+function getStep() { var v = 2.5; try { v = parseFloat(localStorage.getItem("step_" + UID)) || 2.5; } catch (e) {} return STEPS.indexOf(v) === -1 ? 2.5 : v; }
+function stepChips() { var cur = getStep(); return '<div class="stepch"><span class="muted">Шаг, кг</span>' + STEPS.map(function (x) { return '<button class="fchip' + (x === cur ? ' on' : '') + '" data-step="' + x + '">' + fmt(x) + '</button>'; }).join("") + '</div>'; }
 var REST_DEFAULT = 90;
+var STEPS = [1, 2.5, 5, 10];
+function getStep() { var v = 2.5; try { v = parseFloat(localStorage.getItem("step_" + UID)) || 2.5; } catch (e) {} return STEPS.indexOf(v) === -1 ? 2.5 : v; }
+function stepChips() { var cur = getStep(); return '<div class="stepch"><span class="muted">Шаг, кг</span>' + STEPS.map(function (x) { return '<button class="fchip' + (x === cur ? ' on' : '') + '" data-step="' + x + '">' + fmt(x) + '</button>'; }).join("") + '</div>'; }
 var view = document.getElementById("view");
 var S = { tab: "today", home: null, workouts: null, records: null, run: null };
+(function () { // любой переход на другой экран увеличивает токен: опоздавшие ответы старых экранов больше не перерисовывают текущий
+  var tab = S.tab, sub = null; S.navTok = 0;
+  Object.defineProperty(S, "tab", { get: function () { return tab; }, set: function (v) { tab = v; S.navTok++; }, enumerable: true });
+  Object.defineProperty(S, "sub", { get: function () { return sub; }, set: function (v) { sub = v; S.navTok++; }, enumerable: true });
+})();
 
 /* ---------- Телеграм ---------- */
 function setupTelegram() {
@@ -216,12 +228,15 @@ var UID = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsaf
 function cget(k) { try { return JSON.parse(localStorage.getItem("c_" + UID + "_" + k) || "null"); } catch (e) { return null; } }
 function cset(k, v) { try { localStorage.setItem("c_" + UID + "_" + k, JSON.stringify(v)); } catch (e) {} }
 // render(data) вызывается сначала с сохранёнными данными, потом со свежими
-function capi(key, req, render, onFail) {
-  var c = cget(key), shown = false;
+function capi(key, req, render, onFail, onSame) {
+  var c = cget(key), shown = false, tok = S.navTok, cs = c ? JSON.stringify(c) : null;
   if (c) { shown = true; render(c, true); }
   api(req).then(function (r) {
     if (!r || !r.ok) { if (!shown) onFail(r); return; }
-    cset(key, r); render(r, false);
+    cset(key, r);
+    if (tok !== S.navTok) return; // пока грузилось, человек ушёл на другой экран
+    if (shown && JSON.stringify(r) === cs) { if (onSame) onSame(r); return; } // данные не изменились: не мигаем перерисовкой
+    var y = window.scrollY; render(r, false); if (shown) window.scrollTo(0, y);
   });
   return shown;
 }
@@ -262,7 +277,7 @@ function setClientView(on) { S.clientView = on; try { localStorage.setItem("cv_"
 function showToday(force) {
   if (S.home && !force) return renderToday();
   var shown = capi("home", { api: "home" }, function (r, stale) { S.home = r; S.trainer = !!r.trainer; if (S.tab === "today") renderToday(); if (!stale) prefetchTabs(); },
-    function (r) { errorScreen(r && r.error, function () { showToday(true); }, r && r.why); });
+    function (r) { errorScreen(r && r.error, function () { showToday(true); }, r && r.why); }, function () { prefetchTabs(); });
   if (!shown) skeleton();
 }
 function greeting() { var h = new Date().getHours(); return h < 5 ? "Доброй ночи 🌙" : h < 12 ? "Доброе утро ☀️" : h < 18 ? "Добрый день" : "Добрый вечер 🌙"; }
@@ -373,9 +388,9 @@ function renderRun() {
   if (e.video || e.desc) {
     o += '<div class="tools">' + (e.video ? '<button class="btn" id="vid">Видео в чат</button>' : '') + (e.desc ? '<button class="btn" id="tech">Описание</button>' : '') + '</div>' + (e.desc ? '<p class="desc" id="desc"' + (r.showDesc ? '' : ' hidden') + '>' + esc(e.desc) + '</p>' : '');
   }
-  o += '</section><section class="card" style="gap:0">';
+  o += '</section><section class="card" style="gap:0">' + stepChips();
   sets.forEach(function (s, k) {
-    o += '<div class="setrow' + (s.done ? ' done' : '') + '"><div class="n">' + (k + 1) + '</div><div class="stepper"><button data-a="dec" data-k="' + k + '" aria-label="Минус 2,5 кг">−</button><div class="v"><input id="w' + k + '" data-k="' + k + '" inputmode="decimal" value="' + fmt(s.w) + '" aria-label="Вес подхода ' + (k + 1) + '"><small>кг</small></div><button data-a="inc" data-k="' + k + '" aria-label="Плюс 2,5 кг">+</button></div><button class="chk" data-a="done" data-k="' + k + '" aria-label="Подход выполнен">✓</button></div>';
+    o += '<div class="setrow' + (s.done ? ' done' : '') + '"><div class="n">' + (k + 1) + '</div><div class="stepper"><button data-a="dec" data-k="' + k + '" aria-label="Минус шаг">−</button><div class="v"><input id="w' + k + '" data-k="' + k + '" inputmode="decimal" value="' + fmt(s.w) + '" aria-label="Вес подхода ' + (k + 1) + '"><small>кг</small></div><button data-a="inc" data-k="' + k + '" aria-label="Плюс шаг">+</button></div><button class="chk" data-a="done" data-k="' + k + '" aria-label="Подход выполнен">✓</button></div>';
   });
   o += '</section><button class="btn primary" id="next">' + (lastEx ? 'Завершить тренировку' : 'Дальше') + '</button>';
   if (r.i > 0) o += '<button class="btn ghost" id="prev" style="align-self:center">← Предыдущее упражнение</button>';
@@ -389,10 +404,12 @@ function renderRun() {
 function setTabsActive() { Array.prototype.forEach.call(document.querySelectorAll(".tab"), function (b) { b.classList.toggle("on", b.dataset.t === "train"); }); }
 view.addEventListener("click", function (ev) {
   if (!S.run) return;
+  var st = ev.target.closest("button[data-step]");
+  if (st) { try { localStorage.setItem("step_" + UID, st.dataset.step); } catch (e) {} haptic(); Array.prototype.forEach.call(view.querySelectorAll("[data-step]"), function (x) { x.classList.toggle("on", x === st); }); return; }
   var b = ev.target.closest("button[data-a]"); if (!b) return;
   var k = +b.dataset.k, s = S.run.sets[S.run.i][k], a = b.dataset.a;
-  if (a === "inc") { s.w = Math.round((s.w + 2.5) * 10) / 10; document.getElementById("w" + k).value = fmt(s.w); persistRun(); haptic(); }
-  if (a === "dec") { s.w = Math.max(0, Math.round((s.w - 2.5) * 10) / 10); document.getElementById("w" + k).value = fmt(s.w); persistRun(); haptic(); }
+  if (a === "inc") { s.w = Math.round((s.w + getStep()) * 100) / 100; document.getElementById("w" + k).value = fmt(s.w); persistRun(); haptic(); }
+  if (a === "dec") { s.w = Math.max(0, Math.round((s.w - getStep()) * 100) / 100); document.getElementById("w" + k).value = fmt(s.w); persistRun(); haptic(); }
   if (a === "done") {
     s.done = !s.done; haptic(); persistRun(); renderRun();
     if (s.done && S.run.sets[S.run.i].some(function (x) { return !x.done; })) startRest(REST_DEFAULT); else stopRest();
