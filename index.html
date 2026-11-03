@@ -37,6 +37,7 @@ h2{font:600 20px/1.25 var(--body);margin:0;text-wrap:balance}
 .row{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .muted{color:var(--muted);font-size:14px}
 .btn{border:1px solid var(--line);background:transparent;border-radius:12px;padding:10px 14px;min-height:44px;cursor:pointer;font-weight:500;font-size:15px}
+.btn.on{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);font-weight:600}
 .btn.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);font-weight:600;font-size:16px;width:100%;min-height:52px;border-radius:14px}
 .btn.ghost{border-color:transparent;color:var(--accent);padding-inline:6px}
 .btn:disabled{opacity:.45}
@@ -337,7 +338,9 @@ view.addEventListener("click", function (e) {
   var s = e.target.closest("[data-start]"); if (s) return openRun(s.dataset.start);
   var g = e.target.closest("[data-go]"); if (g) return goApp(g.dataset.go);
 });
+document.addEventListener("click", function (e) { var tg2 = e.target.closest("[data-tgo]"); if (tg2 && tg2.dataset.tgo === "slots") return openSlots(); var a = e.target.closest("[data-wgoal]"); if (a) { e.preventDefault(); openWaterGoal(function () { if (S.tab === "today" && S.home) renderToday(); else if (S.tab === "food" && F.day) renderFood(); }); } });
 function goApp(k) {
+  if (k === "wgoal") return openWaterGoal();
   if (k === "book") return showBook(S.tab);
   if (k === "pay") { S.payFrom = S.tab; return showPay(); }
   if (k === "onboard") return showOnboard();
@@ -500,6 +503,39 @@ function searchDb(q) {
   });
   out.sort(function (a, b) { return b[0] - a[0]; });
   return out.slice(0, 30).map(function (x) { return x[1]; });
+}
+
+function openSheet(title, bodyHtml, onReady) {
+  var old = document.getElementById("sheet"); if (old) old.remove();
+  var el = document.createElement("div"); el.id = "sheet";
+  el.innerHTML = '<div class="sheet-bg"></div><div class="sheet-in" style="max-height:92vh;overflow:auto"><div class="row"><b>' + title + '</b><button class="btn ghost" id="sclose">Закрыть</button></div><div style="margin-top:10px">' + bodyHtml + '</div></div>';
+  document.body.appendChild(el);
+  var close = function () { el.remove(); };
+  el.querySelector(".sheet-bg").onclick = close; document.getElementById("sclose").onclick = close;
+  if (onReady) onReady(el, close);
+  return el;
+}
+function openWaterGoal(after) {
+  openSheet("Норма воды", '<div class="muted" id="wgi">Загружаю…</div>', function (el, close) {
+    api({ api: "water_goal_get" }).then(function (r) {
+      if (!r || !r.ok) { document.getElementById("wgi").textContent = "Не получилось загрузить"; return; }
+      var cur = r.goal;
+      var box = document.getElementById("wgi"); box.className = "";
+      function draw() {
+        box.innerHTML = '<div class="muted">' + (r.byWeight ? 'По твоему весу ' + fmt(r.weight) + ' кг рекомендую около ' + r.rec + ' стаканов (стакан 250 мл).' : 'Стандартная норма — ' + r.rec + ' стаканов. Внеси вес в замерах, и я рассчитаю точнее.') + '</div>' +
+          '<div style="display:flex;align-items:center;justify-content:center;gap:18px;margin:16px 0"><button class="btn" id="wg-" style="width:48px">−</button><div class="num" style="font-size:44px;min-width:70px;text-align:center">' + cur + '</div><button class="btn" id="wg+" style="width:48px">＋</button></div>' +
+          '<div class="muted" style="text-align:center">стаканов в день</div><button class="btn primary" id="wgs" style="width:100%;margin-top:14px">Сохранить</button>' + (cur !== r.rec ? '<button class="btn ghost" id="wgr" style="width:100%;margin-top:6px">Взять рекомендованную (' + r.rec + ')</button>' : '');
+        document.getElementById("wg-").onclick = function () { if (cur > 1) { cur--; draw(); } };
+        document.getElementById("wg+").onclick = function () { if (cur < 30) { cur++; draw(); } };
+        var rr = document.getElementById("wgr"); if (rr) rr.onclick = function () { cur = r.rec; draw(); };
+        document.getElementById("wgs").onclick = function () {
+          var b = this; b.disabled = true;
+          api({ api: "water_goal_set", goal: cur }).then(function (x) { if (x && x.ok) { haptic("ok"); cset("home", null); if (S.home && S.home.water) S.home.water.goal = x.goal; if (F && F.day && F.day.water) F.day.water.goal = x.goal; close(); toast("Норма: " + x.goal); if (after) after(); } else { b.disabled = false; toast("Не получилось"); } });
+        };
+      }
+      draw();
+    });
+  });
 }
 function waterHtml(w) {
   var d = '', i; for (i = 0; i < w.goal; i++) d += '<i class="' + (i < w.now ? 'on' : '') + '"></i>';
@@ -1141,7 +1177,7 @@ function showRemSettings() {
 /* ---------- Ещё ---------- */
 var MORE = [
   ["Запись", [["Записаться на занятие", "Свободные окна и мои записи", "@book"]]],
-  ["Питание", [["Распознать по фото", "Пришли фото, ИИ посчитает калории", "/foodphoto"], ["Моя норма калорий", "Рассчитаем вместе в чате", "/caloriegoal"]]],
+  ["Питание", [["Распознать по фото", "Пришли фото, ИИ посчитает калории", "/foodphoto"], ["Норма воды", "Сколько стаканов в день", "@wgoal"], ["Моя норма калорий", "Рассчитаем вместе в чате", "/caloriegoal"]]],
   ["Обо мне", [["Анкета", "Цели, опыт, ограничения", "@onboard"], ["Подписка и оплата", "Срок доступа, тарифы, реквизиты", "@pay"], ["Напоминания", "Что и когда я напоминаю", "@rem"], ["Как пользоваться приложением", "Короткое знакомство", "@tour"]]],
   ["Материалы", [["Рационы и материалы", "Рационы, рецепты, файлы от тренера", "@mat"]]],
   ["Связь", [["Задать вопрос тренеру", "Ответ придёт в чат", "/question"], ["Цены на услуги", "", "/price"], ["Отзывы", "", "/reviews"]]]
@@ -1228,6 +1264,8 @@ function openCard(id) {
 function renderCard(r) {
   var o = '<div class="row"><button class="btn ghost" id="cback">← Назад</button></div><div><h1>' + esc(r.name) + '</h1><div class="muted">' +
     (r.sub ? (r.sub.tier === "Сопровождение" ? "Сопровождение" : "Бот") + (r.sub.until ? " до " + esc(r.sub.until) : "") + (r.sub.active ? "" : " · истёк") : "Подписки нет") + '</div></div>';
+  var act = r.sub && r.sub.active;
+  o += '<section class="card"><div class="label">Доступ</div><div>' + (r.sub ? (r.sub.tier === "Сопровождение" ? "Сопровождение" : "Бот") + (r.sub.until ? " до <b>" + esc(r.sub.until) + "</b>" : "") + (act ? "" : " · истёк") : "Доступа нет") + '</div><div class="tools" style="margin-top:8px"><button class="btn" data-acc="open">' + (r.sub ? "Продлить" : "Открыть доступ") + '</button>' + (act ? '<button class="btn ghost" data-acc="close">Закрыть</button>' : '') + '</div></section>';
   // замеры
   o += '<section class="card"><div class="label">Замеры</div>';
   if (!r.checkins.length) o += '<div class="muted">Чек-инов пока нет</div>';
@@ -1264,6 +1302,8 @@ function renderCard(r) {
 view.addEventListener("click", function (e) {
   var p = e.target.closest("[data-photos]");
   if (p) { toast("Присылаю фото в чат…"); api({ api: "t_photos", id: p.dataset.photos }).then(function (x) { if (x && x.ok) { try { tg && tg.close(); } catch (er) {} } else toast("Не получилось"); }); return; }
+  var ac = e.target.closest("[data-acc]");
+  if (ac && S.tcard) return ac.dataset.acc === "open" ? openAccessSheet(S.tcard) : closeAccess(S.tcard);
   var we = e.target.closest("[data-wedit]");
   if (we) return openWorkoutEditor(we.dataset.wedit);
   var c = e.target.closest("[data-copy]");
@@ -1344,6 +1384,80 @@ function openWorkoutEditor(wid) {
     }
   };
   api({ api: "t_wget", id: wid }).then(function (r) { if (!r || !r.ok) { body.textContent = "Не получилось загрузить"; return; } W = r; draw(); });
+}
+
+function openAccessSheet(cid) {
+  var tier = "Бот", days = 30;
+  var cl = (S.clients || []).filter(function (c) { return c.id === cid; })[0];
+  openSheet("Доступ клиентки", '<div id="accb"></div>', function (el, close) {
+    var box = document.getElementById("accb");
+    function draw() {
+      box.innerHTML = '<div class="muted">Дни прибавляются к дате окончания, если доступ ещё действует. Если уже закончился, считаются с сегодняшнего дня. Смена тарифа считается с сегодняшнего дня.</div>' +
+        '<div class="chips" style="margin:12px 0"><button class="btn ' + (tier === "Бот" ? 'on' : '') + '" data-tr="Бот">Бот</button><button class="btn ' + (tier === "Сопровождение" ? 'on' : '') + '" data-tr="Сопровождение">Сопровождение</button></div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap">' + [7, 14, 30, 60, 90].map(function (d) { return '<button class="btn ' + (days === d ? 'on' : '') + '" data-d="' + d + '">' + d + ' дн.</button>'; }).join("") + '</div>' +
+        '<button class="btn primary" id="accok" style="width:100%;margin-top:14px">Подтвердить: ' + tier + ' +' + days + ' дн.</button><div class="muted" style="margin-top:8px">Клиентке придёт сообщение о продлении.</div>';
+      box.querySelectorAll("[data-tr]").forEach(function (b) { b.onclick = function () { tier = b.dataset.tr; draw(); }; });
+      box.querySelectorAll("[data-d]").forEach(function (b) { b.onclick = function () { days = +b.dataset.d; draw(); }; });
+      document.getElementById("accok").onclick = function () {
+        var b = this; b.disabled = true; b.textContent = "Сохраняю…";
+        api({ api: "t_access_set", id: cid, tier: tier, days: days }).then(function (r) {
+          if (r && r.ok) { haptic("ok"); cset("tcl_" + cid, null); close(); toast("Доступ до " + r.until); openCard(cid); } else { b.disabled = false; toast("Не получилось"); draw(); }
+        });
+      };
+    }
+    draw();
+  });
+}
+function closeAccess(cid) {
+  openSheet("Закрыть доступ?", '<div class="muted">Клиентка сразу потеряет доступ к приложению и платным функциям бота. Ей придёт сообщение.</div><button class="btn primary" id="accc" style="width:100%;margin-top:14px">Да, закрыть доступ</button>', function (el, close) {
+    document.getElementById("accc").onclick = function () {
+      var b = this; b.disabled = true;
+      api({ api: "t_access_revoke", id: cid }).then(function (r) { if (r && r.ok) { cset("tcl_" + cid, null); close(); toast("Доступ закрыт"); openCard(cid); } else { b.disabled = false; toast("Не получилось"); } });
+    };
+  });
+}
+
+function openSlots() {
+  var el = openSheet("Окна для записи", '<div id="slb" class="muted">Загружаю…</div>', null);
+  var box = document.getElementById("slb"), items = [], sel = {}, date = "";
+  var HOURS = []; for (var h = 7; h <= 21; h++) HOURS.push((h < 10 ? "0" : "") + h + ":00");
+  function ruDate(iso) { var p = iso.split("-"); return p[2] + "." + p[1] + "." + p[0]; }
+  function load() { api({ api: "t_slots" }).then(function (r) { items = (r && r.ok) ? r.items : []; draw(); }); }
+  function draw() {
+    box.className = "";
+    var today = new Date(); today.setHours(0, 0, 0, 0);
+    var minIso = today.getFullYear() + "-" + ("0" + (today.getMonth() + 1)).slice(-2) + "-" + ("0" + today.getDate()).slice(-2);
+    var o = '<div class="label">Добавить окна</div><input type="date" id="sld" min="' + minIso + '" value="' + date + '" style="width:100%;margin:6px 0 8px">';
+    if (date) {
+      var taken = {}; items.forEach(function (x) { if (x.d === ruDate(date)) taken[x.t] = 1; });
+      o += '<div style="display:flex;flex-wrap:wrap;gap:6px">' + HOURS.map(function (t) { return '<button class="btn ' + (sel[t] ? 'on' : '') + '"' + (taken[t] ? ' disabled style="opacity:.4"' : '') + ' data-h="' + t + '">' + t + '</button>'; }).join("") + '</div>' +
+        '<div style="display:flex;gap:6px;margin-top:8px"><input type="time" id="slt" style="flex:1"><button class="btn" id="slta">＋ своё время</button></div>';
+      var n = Object.keys(sel).length;
+      o += '<button class="btn primary" id="slok" style="width:100%;margin-top:12px"' + (n ? '' : ' disabled') + '>Добавить' + (n ? ' (' + n + ')' : '') + '</button>';
+    } else o += '<div class="muted">Выбери дату, потом время (можно несколько).</div>';
+    o += '<div class="label" style="margin-top:18px">Уже в расписании</div>';
+    if (!items.length) o += '<div class="muted">Пока ничего нет</div>';
+    var cur = "";
+    items.forEach(function (x) {
+      if (x.d !== cur) { cur = x.d; o += '<div class="muted" style="margin-top:8px">' + esc(x.d) + '</div>'; }
+      o += '<div class="row"><span>' + esc(x.t) + ' <span class="muted">' + (x.s === "free" ? 'свободно' : x.s === "wait" ? 'ждёт подтверждения' : 'занято') + '</span></span>' + (x.s === "free" ? '<button class="btn ghost" data-del="' + esc(x.d) + '|' + esc(x.t) + '">Убрать</button>' : '') + '</div>';
+    });
+    box.innerHTML = o;
+    var d = document.getElementById("sld"); if (d) d.onchange = function () { date = d.value; sel = {}; draw(); };
+    box.querySelectorAll("[data-h]").forEach(function (b) { b.onclick = function () { if (sel[b.dataset.h]) delete sel[b.dataset.h]; else sel[b.dataset.h] = 1; draw(); }; });
+    var ta = document.getElementById("slta"); if (ta) ta.onclick = function () { var v = document.getElementById("slt").value; if (v) { sel[v] = 1; draw(); } };
+    var ok = document.getElementById("slok"); if (ok) ok.onclick = function () {
+      ok.disabled = true;
+      api({ api: "t_slots_add", items: Object.keys(sel).map(function (t) { return { d: ruDate(date), t: t }; }) }).then(function (r) {
+        if (r && r.ok) { haptic("ok"); toast("Добавлено: " + r.added + (r.skipped ? " · пропущено " + r.skipped : "")); sel = {}; load(); } else { ok.disabled = false; toast("Не получилось"); }
+      });
+    };
+    box.querySelectorAll("[data-del]").forEach(function (b) { b.onclick = function () {
+      var p = b.dataset.del.split("|"); b.disabled = true;
+      api({ api: "t_slot_del", d: p[0], t: p[1] }).then(function (r) { toast(r && r.ok ? "Окно убрано" : "Не получилось"); load(); });
+    }; });
+  }
+  load();
 }
 function openAssignSheet(cid) {
   var old = document.getElementById("sheet"); if (old) old.remove();
@@ -1481,16 +1595,16 @@ view.addEventListener("click", function (e) {
 
 /* «Ещё» у тренера */
 var TMORE = [
-  ["Расписание", [["Кто записан", "/mybookings"], ["Настроить окна", "/setupschedule"], ["Проверить окна", "/checkwindows"]]],
+  ["Расписание", [["Кто записан", "/mybookings"], ["Окна для записи", "@slots"], ["Проверить окна", "/checkwindows"]]],
   ["Клиентки", [["Назначить тренировку", "/assignworkout"], ["Доступ клиентки", "/manageaccess"], ["Итоги питания по дням", "/clientfood"], ["Сводка", "/summary"], ["Статистика", "/stats"]]],
   ["Бот", [["Рассылка", "/broadcast"], ["Продукты", "/addfood"], ["Обновить меню клиентам", "/refreshmenu"], ["Все команды", "/admin"]]]
 ];
 function showTMore() {
   var o = '<h1>Ещё</h1>';
   TMORE.forEach(function (g) {
-    o += '<div><div class="label" style="margin:6px 4px 8px">' + g[0] + '</div><div class="card list" style="gap:0">' + g[1].map(function (it) { return '<button class="item" data-cmd="' + it[1] + '"><span>' + it[0] + '</span>' + chevron() + '</button>'; }).join("") + '</div></div>';
+    o += '<div><div class="label" style="margin:6px 4px 8px">' + g[0] + '</div><div class="card list" style="gap:0">' + g[1].map(function (it) { return '<button class="item" ' + (it[1].charAt(0) === "@" ? 'data-tgo="' + it[1].slice(1) + '"' : 'data-cmd="' + it[1] + '"') + '><span>' + it[0] + '</span>' + chevron() + '</button>'; }).join("") + '</div></div>';
   });
-  o += '<button class="btn" id="asclient">Посмотреть приложение как клиентка</button><div class="muted" style="text-align:center">Эти разделы откроются в чате с ботом</div>';
+  o += '<button class="btn" id="asclient">Посмотреть приложение как клиентка</button><div class="muted" style="text-align:center">Остальное откроется в чате с ботом</div>';
   view.innerHTML = o;
   document.getElementById("asclient").onclick = function () { setClientView(true); };
 }
@@ -1578,6 +1692,13 @@ function demoApi(req) {
     t_report: { ok: true, days: 30, rows: [{ id: "1", name: "Анна К.", checkins: 3, weight: 67.8, dWeight: -2.2, waist: 72, dWaist: -3, hips: 99, dHips: -1, workouts: 6 }, { id: "2", name: "Ольга", checkins: 0, workouts: 2 }] },
     t_wget: { ok: true, id: "w1", clientId: "1", name: "Низ А", items: [{ n: 1, name: "Жим ногами горизонтальной платформе", sets: "4", reps: "10-12" }, { n: 0, name: "Румынская тяга", sets: "3", reps: "10 на ногу" }, { n: 2, name: "Планка", sets: "3", reps: "40 сек" }] },
     t_wsave: { ok: true },
+    water_goal_get: { ok: true, goal: 8, rec: 9, byWeight: true, weight: 68 },
+    water_goal_set: { ok: true, goal: 9 },
+    t_access_set: { ok: true, tier: "Бот", until: "3 декабря" },
+    t_access_revoke: { ok: true },
+    t_slots: { ok: true, items: [{ d: "05.11.2026", t: "10:00", s: "free" }, { d: "05.11.2026", t: "12:00", s: "busy" }, { d: "06.11.2026", t: "09:00", s: "free" }] },
+    t_slots_add: { ok: true, added: 2, skipped: 0 },
+    t_slot_del: { ok: true },
     t_wdel: { ok: true },
     t_catalog: { ok: true, items: [{ n: 1, name: "Армейский жим", cat: "Дельты", v: true, d: true, s: true }, { n: 2, name: "Жим ногами горизонтальной платформы", cat: "Ноги", v: true, d: false, s: false }, { n: 3, name: "Румынская тяга", cat: "Ягодицы", v: false, d: true, s: true }] },
     t_cat_get: { ok: true, n: 2, name: "Жим ногами горизонтальной платформы", cat: "Ноги", v: true, desc: "", syn: "" }, t_cat_set: { ok: true }, t_note: { ok: true }, t_copy: { ok: true }, t_assign: { ok: true, name: "Низ А", count: 3, failed: [], unmatched: ["Выпады в смите"] }, t_photos: { ok: true }
