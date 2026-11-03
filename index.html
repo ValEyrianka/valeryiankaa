@@ -125,6 +125,11 @@ details summary{list-style:none}details summary::-webkit-details-marker{display:
 .gprev{padding:8px 0;font-size:15px}
 .confetti{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:50}.confetti span{position:absolute;top:-30px;animation:fall 3s ease-in forwards}
 @keyframes fall{to{transform:translateY(110vh) rotate(360deg);opacity:.8}}
+[hidden]{display:none!important}
+.subbar{display:flex;align-items:center;margin-left:-6px}.chips.scroll{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}.chips.scroll::-webkit-scrollbar{display:none}.chips.scroll .fchip{flex:none}
+.fchip.off{opacity:.45}.timegrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.timegrid .fchip{padding:8px 4px;text-align:center}
+.hl{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--line);padding-top:10px;font-size:14px}.cancelbox{width:100%;display:flex;flex-direction:column;gap:8px;padding:6px 0 10px}
+.bigemoji{font-size:44px;line-height:1}.copy{display:flex;align-items:baseline;gap:8px;border:1px dashed var(--line);background:transparent;color:var(--fg);border-radius:10px;padding:6px 10px;margin:2px 0;font:600 17px var(--body);cursor:pointer;letter-spacing:.02em}.copy small{font-weight:400;color:var(--muted);font-size:12px;letter-spacing:0}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -164,9 +169,12 @@ function haptic(kind) { try { if (tg && tg.HapticFeedback) { kind === "ok" ? tg.
 function toast(t) { var el = document.getElementById("toast"); el.textContent = t; el.classList.add("on"); clearTimeout(toast.t); toast.t = setTimeout(function () { el.classList.remove("on"); }, 2400); }
 
 /* ---------- обмен данными ---------- */
+// запуск из кнопки под строкой ввода: Telegram не даёт подписанных данных, но в ссылке есть личный ключ
+var KB = (function () { var u = /[?&]u=(\d+)/.exec(location.search), k = /[?&]k=([a-f0-9]{16,64})/.exec(location.search); return u && k ? { u: u[1], k: k[1] } : null; })();
 function api(req) {
   if (DEMO) return demoApi(req);
   req.initData = tg ? tg.initData : "";
+  if (!req.initData && KB) req.kb = KB;
   var ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
   var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, 25000) : null;
   return fetch(API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(req), signal: ctrl ? ctrl.signal : undefined })
@@ -188,7 +196,7 @@ function errorScreen(code, retry, why) {
 function goBot(cmd) { api({ api: "cmd", cmd: cmd }).then(function (r) { if (r && r.ok) { try { tg && tg.close(); } catch (e) {} } else toast("Не получилось, попробуй ещё раз"); }); toast("Открываю в чате…"); }
 
 /* ---------- кеш (мгновенный показ прошлых данных, пока грузятся новые) ---------- */
-var UID = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id) || "demo";
+var UID = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id) || (KB && KB.u) || "demo";
 function cget(k) { try { return JSON.parse(localStorage.getItem("c_" + UID + "_" + k) || "null"); } catch (e) { return null; } }
 function cset(k, v) { try { localStorage.setItem("c_" + UID + "_" + k, JSON.stringify(v)); } catch (e) {} }
 // render(data) вызывается сначала с сохранёнными данными, потом со свежими
@@ -214,7 +222,7 @@ var ICONS = {
   treports: '<path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h7"/>',
   tcatalog: '<path d="M4 5a2 2 0 012-2h13v16H6a2 2 0 00-2 2z"/><path d="M4 21V5M8 7h7"/>'
 };
-var TABS_C = [["today", "Сегодня"], ["train", "Тренировка"], ["food", "Питание"], ["records", "Рекорды"], ["more", "Ещё"]];
+var TABS_C = [["today", "Сегодня"], ["train", "Тренировка"], ["food", "Питание"], ["records", "Прогресс"], ["more", "Ещё"]];
 var TABS_T = [["tpanel", "Панель"], ["tclients", "Клиентки"], ["treports", "Отчёты"], ["tcatalog", "Каталог"], ["tmore", "Ещё"]];
 function tabList() { return S.trainer && !S.clientView ? TABS_T : TABS_C; }
 function renderTabs() {
@@ -226,7 +234,7 @@ function markTab(t) {
   Array.prototype.forEach.call(document.querySelectorAll(".tab"), function (b) { b.classList.toggle("on", b.dataset.t === t); b.setAttribute("aria-current", b.dataset.t === t ? "page" : "false"); });
 }
 function setTab(t) {
-  S.tab = t; S.tcard = null; markTab(t); closeFoodSheet();
+  S.tab = t; S.tcard = null; S.sub = null; markTab(t); closeFoodSheet();
   window.scrollTo(0, 0);
   var f = { today: showToday, train: showTrain, food: showFood, records: showRecords, more: showMore, tpanel: showPanel, tclients: showClients, treports: showReports, tcatalog: showCatalog, tmore: showTMore }[t];
   f();
@@ -269,11 +277,13 @@ function renderToday() {
   o += '<div class="tools"><button class="btn" id="tadd">Записать еду</button><button class="btn" data-cmd="/foodphoto">📸 По фото</button></div></div>';
   o += waterHtml(h.water);
   if (h.booking) {
-    o += '<div class="card"><div class="label">📅 Ближайшее занятие</div><h2>' + esc(h.booking.day) + ', ' + esc(h.booking.time) + '</h2><div class="muted">' + esc(h.booking.format) + (h.booking.pending ? ' · ждёт подтверждения' : '') + '</div></div>';
+    o += '<div class="card"><div class="label">📅 Ближайшее занятие</div><h2>' + esc(h.booking.day) + ', ' + esc(h.booking.time) + '</h2><div class="muted">' + esc(h.booking.format) + (h.booking.pending ? ' · ждёт подтверждения' : '') + '</div><div class="tools"><button class="btn" data-go="book">Все записи</button></div></div>';
+  } else {
+    o += '<div class="card"><div class="label">📅 Занятие с тренером</div><div class="muted">Выбери удобное время: онлайн или в зале.</div><div class="tools"><button class="btn" data-go="book">Записаться</button></div></div>';
   }
   if (h.sub) {
     o += '<div class="card"><div class="row"><div><div class="label">💛 Подписка</div><div>до ' + esc(h.sub.until) + '</div></div>' +
-      (h.sub.daysLeft <= 7 ? '<button class="btn" data-cmd="/subscribe">Продлить</button>' : '') + '</div>' +
+      (h.sub.daysLeft <= 7 ? '<button class="btn" data-go="pay">Продлить</button>' : '<button class="btn ghost" data-go="pay">Подробнее</button>') + '</div>' +
       (h.sub.daysLeft <= 7 ? '<div class="muted">' + (h.sub.daysLeft <= 0 ? 'Заканчивается сегодня' : 'Осталось ' + h.sub.daysLeft + ' ' + plural(h.sub.daysLeft, "день", "дня", "дней")) + '</div>' : '') + '</div>';
   }
   view.innerHTML = o + '<div class="brand">Valeryiankaa</div>';
@@ -283,14 +293,23 @@ function renderToday() {
 view.addEventListener("click", function (e) {
   var c = e.target.closest("[data-cmd]"); if (c) return goBot(c.dataset.cmd);
   var s = e.target.closest("[data-start]"); if (s) return openRun(s.dataset.start);
+  var g = e.target.closest("[data-go]"); if (g) return goApp(g.dataset.go);
 });
+function goApp(k) {
+  if (k === "book") return showBook(S.tab);
+  if (k === "pay") { S.payFrom = S.tab; return showPay(); }
+  if (k === "onboard") return showOnboard();
+  if (k === "checkin") { S.tab = "records"; markTab("records"); return showCheckin(); }
+}
 
 /* ---------- Тренировки ---------- */
 function showTrain() {
+  if (S.trainSeg === "ex") return showExercises();
+  if (S.trainSeg === "hist") return showHistory();
   var shown = capi("workouts", { api: "workouts" }, function (r) {
     if (S.tab !== "train") return;
     S.workouts = r.workouts;
-    var o = '<h1>Тренировки</h1>';
+    var o = '<h1>Тренировки</h1>' + trainSeg();
     if (!r.workouts.length) o += '<div class="card"><div class="muted">Тренер ещё не назначил тебе тренировку.</div></div>';
     r.workouts.forEach(function (w) {
       o += '<button class="card" style="text-align:left;cursor:pointer" data-start="' + esc(w.id) + '"><div class="row"><h2>' + esc(w.name) + '</h2>' + (w.next ? '<span class="chip soft">следующая</span>' : '') + '</div><div class="muted">' + w.exercises + ' ' + plural(w.exercises, "упражнение", "упражнения", "упражнений") + '</div></button>';
@@ -562,37 +581,302 @@ function chartSvg(points, w, h) {
   points.forEach(function (p, i) { s += '<circle cx="' + X(i).toFixed(1) + '" cy="' + Y(p.w).toFixed(1) + '" r="4" fill="var(--accent)"/><text class="val" x="' + X(i).toFixed(1) + '" y="' + (Y(p.w) - 9).toFixed(1) + '" text-anchor="middle">' + fmt(p.w) + '</text><text x="' + X(i).toFixed(1) + '" y="' + (H - 4) + '" text-anchor="middle">' + esc(p.d) + '</text>'; });
   return s + '</svg>';
 }
-function showRecords() {
+function showRecords() { if (S.progSeg === "rec") return showRecordsList(); return showBody(); }
+function showRecordsList() {
   var draw = function () {
-    var items = S.records, o = '<h1>Рекорды</h1>';
+    var items = S.records, o = '<h1>Прогресс</h1>' + progSeg();
     if (!items.length) o += '<div class="card"><div class="muted">Пока нет данных. После тренировок с рабочими весами здесь появятся твои рекорды и графики роста.</div></div>';
     items.forEach(function (e, i) {
       var gain = e.best - e.first;
       o += '<div class="card"><button class="row" style="background:none;border:0;padding:0;text-align:left;cursor:pointer;width:100%" data-rec="' + i + '"><div><div>' + esc(e.name) + '</div><div class="muted">' + e.n + ' ' + plural(e.n, "тренировка", "тренировки", "тренировок") + '</div></div><div style="text-align:right"><div class="num">' + fmt(e.best) + '<span class="muted" style="font:14px var(--body)"> кг</span></div>' + (gain > 0 ? '<span class="chip">+' + fmt(Math.round(gain * 10) / 10) + ' с начала</span>' : '') + '</div></button><div id="rc' + i + '" hidden>' + (e.points.length > 1 ? chartSvg(e.points, 320, 170) : '<div class="muted">Для графика нужно хотя бы две тренировки.</div>') + '</div></div>';
     });
-    if (S.tab === "records") view.innerHTML = o;
+    if (S.tab === "records" && S.progSeg === "rec") view.innerHTML = o;
   };
-  var shown = capi("records", { api: "records" }, function (r) { S.records = r.items; if (S.tab === "records") draw(); }, function (r) { errorScreen(r && r.error, showRecords); });
+  var shown = capi("records", { api: "records" }, function (r) { S.records = r.items; if (S.tab === "records" && S.progSeg === "rec") draw(); }, function (r) { errorScreen(r && r.error, showRecordsList); });
   if (!shown) skeleton();
 }
 view.addEventListener("click", function (e) { var b = e.target.closest("[data-rec]"); if (b) { var c = document.getElementById("rc" + b.dataset.rec); c.hidden = !c.hidden; } });
 
+/* ---------- общие кусочки ---------- */
+function subBar(title, id) { return '<div class="subbar"><button class="btn ghost" id="' + (id || "sback") + '">‹ Назад</button></div><h1>' + title + '</h1>'; }
+function segHtml(attr, items, cur) { return '<div class="seg" role="tablist">' + items.map(function (it) { return '<button ' + attr + '="' + it[0] + '" class="' + (cur === it[0] ? 'on' : '') + '" role="tab" aria-selected="' + (cur === it[0]) + '">' + it[1] + '</button>'; }).join("") + '</div>'; }
+function trainSeg() { return segHtml("data-ts", [["mine", "Мои"], ["ex", "Справочник"], ["hist", "История"]], S.trainSeg || "mine"); }
+function progSeg() { return segHtml("data-ps", [["body", "Тело"], ["rec", "Рекорды"]], S.progSeg || "body"); }
+view.addEventListener("click", function (e) {
+  var a = e.target.closest("[data-ts]"); if (a) { S.trainSeg = a.dataset.ts; haptic(); return showTrain(); }
+  var b = e.target.closest("[data-ps]"); if (b) { S.progSeg = b.dataset.ps; haptic(); return showRecords(); }
+});
+function backTo(tab) { S.sub = null; setTab(tab || S.tab || "more"); }
+function copyText(t) { try { if (navigator.clipboard) { navigator.clipboard.writeText(t); return true; } } catch (e) {} try { var ta = document.createElement("textarea"); ta.value = t; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove(); return true; } catch (er) {} return false; }
+
+/* ---------- Справочник упражнений ---------- */
+var EX = { items: null, cats: [], subs: {}, q: "", cat: "", sub: "", srv: {}, shown: 40, timer: null };
+function showExercises() {
+  var shown = capi("exlist", { api: "ex_list" }, function (r) { EX.items = r.items; EX.cats = r.cats; EX.subs = r.subs || {}; if (S.tab === "train" && S.trainSeg === "ex" && !S.sub) renderExercises(); },
+    function (r) { errorScreen(r && r.error, showExercises, r && r.why); });
+  if (!shown) skeleton();
+}
+function exFiltered() {
+  var q = norm(EX.q).trim(), words = q.split(/\s+/).filter(Boolean), list;
+  if (words.length && q.length >= 2 && EX.srv[q]) list = EX.srv[q];
+  else list = EX.items.filter(function (it) { var n = norm(it[1]); return words.every(function (w) { return n.indexOf(w) !== -1; }); });
+  return list.filter(function (it) { return (!EX.cat || it[2] === EX.cat) && (!EX.sub || it[3] === EX.sub); });
+}
+function renderExercises() {
+  var o = '<h1>Тренировки</h1>' + trainSeg() + '<input class="search" id="exq" type="search" placeholder="Найти упражнение, например: присед" autocomplete="off" value="' + esc(EX.q) + '">';
+  o += '<div class="chips scroll"><button class="fchip ' + (!EX.cat ? 'on' : '') + '" data-ec="">Все</button>' + EX.cats.map(function (c) { return '<button class="fchip ' + (EX.cat === c ? 'on' : '') + '" data-ec="' + esc(c) + '">' + esc(c.replace(/\s*\(.*\)/, "").replace("Функциональные/кардио/растяжка", "Кардио и растяжка")) + '</button>'; }).join("") + '</div>';
+  if (EX.cat && EX.subs[EX.cat]) o += '<div class="chips scroll"><button class="fchip ' + (!EX.sub ? 'on' : '') + '" data-es="">Все</button>' + EX.subs[EX.cat].map(function (c) { return '<button class="fchip ' + (EX.sub === c ? 'on' : '') + '" data-es="' + esc(c) + '">' + esc(c) + '</button>'; }).join("") + '</div>';
+  o += '<div id="exlist"></div>';
+  view.innerHTML = o;
+  var qi = document.getElementById("exq");
+  qi.oninput = function () { EX.q = qi.value; EX.shown = 40; drawExList(); clearTimeout(EX.timer); var q = norm(EX.q).trim(); if (q.length >= 2 && !EX.srv[q]) EX.timer = setTimeout(function () { api({ api: "ex_search", q: EX.q }).then(function (r) { if (r && r.ok) { EX.srv[q] = r.items; if (norm(EX.q).trim() === q) drawExList(); } }); }, 350); };
+  Array.prototype.forEach.call(view.querySelectorAll("[data-ec]"), function (b) { b.onclick = function () { EX.cat = b.dataset.ec; EX.sub = ""; EX.shown = 40; haptic(); renderExercises(); }; });
+  Array.prototype.forEach.call(view.querySelectorAll("[data-es]"), function (b) { b.onclick = function () { EX.sub = b.dataset.es; EX.shown = 40; haptic(); renderExercises(); }; });
+  drawExList();
+}
+function drawExList() {
+  var l = exFiltered(), el = document.getElementById("exlist"); if (!el) return;
+  if (!l.length) { el.innerHTML = '<div class="card"><div class="muted">Ничего не нашла. Попробуй другое слово или выбери «Все».</div></div>'; return; }
+  var o = '<div class="card list" style="gap:0">' + l.slice(0, EX.shown).map(function (it) {
+    return '<button class="item" data-exn="' + it[0] + '"><span>' + esc(it[1]) + '<small>' + (it[4] ? '🎥 есть видео' : it[5] ? 'есть описание' : '') + '</small></span><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>';
+  }).join("") + '</div>';
+  if (l.length > EX.shown) o += '<button class="btn" id="exmore" style="align-self:center">Показать ещё (' + (l.length - EX.shown) + ')</button>';
+  el.innerHTML = o;
+  Array.prototype.forEach.call(el.querySelectorAll("[data-exn]"), function (b) { b.onclick = function () { openExercise(+b.dataset.exn); }; });
+  var m = document.getElementById("exmore"); if (m) m.onclick = function () { EX.shown += 40; drawExList(); };
+}
+function openExercise(n) {
+  S.sub = "ex";
+  var shown = capi("ex_" + n, { api: "ex_get", number: n }, function (r) {
+    if (S.sub !== "ex") return;
+    var o = subBar(esc(r.name)) + '<div class="chips"><span class="chip soft">' + esc(r.sub || r.category) + '</span></div>';
+    o += r.desc ? '<section class="card"><div class="label">Как выполнять</div><p class="desc" style="display:block;margin:0;white-space:pre-line">' + esc(r.desc) + '</p></section>' : '<section class="card"><div class="muted">Подробного описания пока нет. Видео или пояснения можно спросить у тренера.</div></section>';
+    if (r.video) o += '<button class="btn primary" id="exvid">🎥 Видео в чат</button><div class="muted" style="text-align:center">Приложение закроется, видео придёт в чат с ботом</div>';
+    view.innerHTML = o; window.scrollTo(0, 0);
+    document.getElementById("sback").onclick = function () { S.sub = null; renderExercises(); };
+    var v = document.getElementById("exvid"); if (v) v.onclick = function () { v.disabled = true; toast("Присылаю видео в чат…"); api({ api: "video", number: n }).then(function (x) { if (x && x.ok) { try { tg && tg.close(); } catch (er) {} } else { v.disabled = false; toast("Не получилось"); } }); };
+  }, function (r) { S.sub = null; errorScreen(r && r.error, function () { openExercise(n); }); });
+  if (!shown) skeleton();
+}
+
+/* ---------- История тренировок ---------- */
+function showHistory() {
+  var shown = capi("history", { api: "history" }, function (r) {
+    if (S.tab !== "train" || S.trainSeg !== "hist") return;
+    var o = '<h1>Тренировки</h1>' + trainSeg();
+    if (!r.items.length) o += '<div class="card"><div class="muted">Пока нет ни одной тренировки. После первой она появится здесь 💪</div></div>';
+    r.items.forEach(function (h) {
+      var lines = h.results.filter(function (x) { return x.weight || h.finished; });
+      o += '<section class="card"><div class="row"><div><h2>' + esc(h.name) + '</h2><div class="muted">' + esc(h.date) + '</div></div>' + (h.finished ? '<span class="chip">завершена</span>' : '<span class="chip soft">не завершена</span>') + '</div>' +
+        (lines.length ? '<div class="hl">' + lines.map(function (x) { return '<div class="row"><span>' + esc(x.name) + '</span><span class="muted">' + (x.weight ? fmt(x.weight) + ' кг' : '✓') + '</span></div>'; }).join("") + '</div>' : '') + '</section>';
+    });
+    view.innerHTML = o;
+  }, function (r) { errorScreen(r && r.error, showHistory); });
+  if (!shown) skeleton();
+}
+
+/* ---------- Прогресс: тело ---------- */
+function showBody() {
+  var shown = capi("progress", { api: "progress" }, function (r) { S.prog = r; if (S.tab === "records" && S.progSeg !== "rec" && !S.sub) renderBody(); }, function (r) { errorScreen(r && r.error, showBody); });
+  if (!shown) skeleton();
+}
+var BODY_LABELS = [["weight", "Вес", "кг"], ["arm", "Рука", "см"], ["chest", "Грудь", "см"], ["waist", "Талия", "см"], ["hips", "Бёдра", "см"], ["thigh", "Бедро", "см"], ["calf", "Икра", "см"]];
+function sampleSeries(a, n) { if (a.length <= n) return a; var o = [], i; for (i = 0; i < n; i++) o.push(a[Math.round(i * (a.length - 1) / (n - 1))]); return o; }
+function renderBody() {
+  var p = S.prog, o = '<h1>Прогресс</h1>' + progSeg();
+  if (!p.count) {
+    o += '<section class="card hero"><h2>Начнём отслеживать? 💛</h2><div class="muted">Раз в неделю: вес и замеры за пару минут. Через месяц ты увидишь, как меняется тело, и график скажет об этом лучше слов.</div><button class="btn primary" id="cin">Сделать первый чек-ин</button></section>';
+    view.innerHTML = o; document.getElementById("cin").onclick = showCheckin; return;
+  }
+  var dw = p.first && p.last ? Math.round((p.last.weight - p.first.weight) * 10) / 10 : 0;
+  o += '<section class="card"><div class="label">Вес</div><div class="num">' + fmt(p.last.weight) + '<span class="muted" style="font:14px var(--body)"> кг</span>' + (p.count > 1 ? ' <span class="chip ' + (dw <= 0 ? '' : 'soft') + '">' + (dw > 0 ? '+' : '') + fmt(dw) + ' с начала</span>' : '') + '</div>';
+  if (p.goalWeight) { var left = Math.round((p.goalWeight - p.last.weight) * 10) / 10; o += '<div class="muted">' + (Math.abs(left) < 0.1 ? '🎯 Цель ' + fmt(p.goalWeight) + ' кг достигнута!' : 'Цель ' + fmt(p.goalWeight) + ' кг · осталось ' + (left > 0 ? 'набрать ' : 'сбросить ') + fmt(Math.abs(left)) + ' кг') + '</div>'; }
+  if (p.bmiLast) o += '<div class="muted">ИМТ ' + fmt(p.bmiLast) + (p.bmiFirst && p.bmiFirst !== p.bmiLast ? ' (было ' + fmt(p.bmiFirst) + ')' : '') + '</div>';
+  if (p.series.length > 1) o += chartSvg(sampleSeries(p.series, 7).map(function (s) { return { w: s.weight, d: s.d }; }), 320, 170);
+  o += '</section>';
+  if (p.streak >= 2) o += '<div class="card"><div class="row"><div><div class="label">🔥 Серия</div><div>' + p.streak + ' ' + plural(p.streak, "неделя", "недели", "недель") + ' подряд</div></div><span class="muted">так держать</span></div></div>';
+  if (p.count > 1) {
+    o += '<section class="card" style="gap:0"><div class="label" style="margin-bottom:6px">Замеры: первый → последний</div>';
+    BODY_LABELS.forEach(function (b) {
+      var a = p.first[b[0]], z = p.last[b[0]]; if (!(a > 0 && z > 0)) return;
+      var d = Math.round((z - a) * 10) / 10;
+      o += '<div class="entry"><div>' + b[1] + '</div><div style="text-align:right">' + fmt(a) + ' → <b>' + fmt(z) + '</b> ' + b[2] + ' <span class="muted">(' + (d > 0 ? '+' : '') + fmt(d) + ')</span></div></div>';
+    });
+    o += '</section>';
+  }
+  o += '<div class="muted" style="text-align:center">Последний чек-ин: ' + esc(p.lastDate) + ' · всего ' + p.count + '</div><button class="btn primary" id="cin">Сделать чек-ин</button>';
+  view.innerHTML = o; document.getElementById("cin").onclick = showCheckin;
+}
+
+/* ---------- Чек-ин ---------- */
+var CIN_FIELDS = [["weight", "Вес, кг", true], ["arm", "Рука, см"], ["chest", "Грудь, см"], ["waist", "Талия, см"], ["hips", "Бёдра, см"], ["thigh", "Бедро, см"], ["calf", "Икра, см"]];
+function showCheckin() {
+  S.sub = "cin";
+  var go = function (p) {
+    S.prog = p; var first = !p.count, last = p.last || {};
+    var o = subBar("Чек-ин") + '<div class="muted">' + (first ? 'Первый раз нужны все замеры: так будет с чего сравнивать. Дальше можно заполнять только то, что изменилось.' : 'Заполни, что измеряла. Пустые поля останутся как в прошлый раз.') + '</div><section class="card">';
+    if (!p.height) o += '<label class="fl">Рост, см (один раз)<input class="search" id="ci_height" inputmode="decimal" placeholder="165"></label>';
+    CIN_FIELDS.forEach(function (f) { o += '<label class="fl">' + f[1] + (f[2] || first ? '' : '') + '<input class="search" id="ci_' + f[0] + '" inputmode="decimal" placeholder="' + (last[f[0]] ? fmt(last[f[0]]) : '') + '"></label>'; });
+    o += '<div class="fl">Как себя чувствуешь на этой неделе? <span id="moodv" class="muted"></span><div class="chips" id="moods">' + [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(function (n) { return '<button class="fchip" data-m="' + n + '">' + n + '</button>'; }).join("") + '</div></div></section><button class="btn primary" id="cisave">Сохранить чек-ин</button>';
+    view.innerHTML = o; window.scrollTo(0, 0);
+    var mood = null;
+    document.getElementById("sback").onclick = function () { S.sub = null; setTab("records"); };
+    document.getElementById("moods").onclick = function (e) { var b = e.target.closest("[data-m]"); if (!b) return; mood = +b.dataset.m; Array.prototype.forEach.call(document.querySelectorAll("#moods .fchip"), function (x) { x.classList.toggle("on", x === b); }); haptic(); };
+    document.getElementById("cisave").onclick = function () {
+      var req = { api: "checkin_save" }, v = function (id) { var el = document.getElementById("ci_" + id); return el ? String(el.value).trim().replace(",", ".") : ""; };
+      CIN_FIELDS.forEach(function (f) { req[f[0]] = v(f[0]); });
+      if (!p.height) req.height = v("height");
+      req.mood = mood;
+      if (!req.weight || isNaN(+req.weight)) return toast("Укажи вес");
+      if (first) { for (var i = 1; i < CIN_FIELDS.length; i++) if (!req[CIN_FIELDS[i][0]]) return toast("В первый раз нужны все замеры: " + CIN_FIELDS[i][1]); if (!mood) return toast("Выбери самочувствие"); if (!p.height && !req.height) return toast("Укажи рост"); }
+      var b = this; b.disabled = true; b.textContent = "Сохраняю…";
+      api(req).then(function (r) {
+        if (r && r.ok) { haptic("ok"); cset("progress", null); cset("home", null); S.home = null; S.prog = null; doneCheckin(r.row); }
+        else { b.disabled = false; b.textContent = "Сохранить чек-ин"; var nm = { height: "рост", weight: "вес" }[r && r.field] || (r && r.field); toast(r && r.error === "bad" ? "Проверь число в поле «" + nm + "»" : r && r.error === "need" ? "Нужно заполнить: " + nm : "Не получилось, попробуй ещё раз"); }
+      });
+    };
+  };
+  var c = cget("progress"); if (c) go(c); else { skeleton(); api({ api: "progress" }).then(function (r) { if (r && r.ok) go(r); else { S.sub = null; errorScreen(r && r.error, showCheckin); } }); }
+}
+function doneCheckin(row) {
+  var o = '<div class="center"><div class="bigemoji">✅</div><h2>Чек-ин записан!</h2><div class="muted">Так держать 💪 Фото прогресса тоже можно добавить: они пригодятся для сравнения.</div><button class="btn primary" id="cph" style="max-width:300px">📸 Добавить фото в чате</button><button class="btn" id="cdone" style="max-width:300px">Готово</button></div>';
+  view.innerHTML = o; confetti();
+  document.getElementById("cdone").onclick = function () { S.sub = null; S.progSeg = "body"; setTab("records"); };
+  document.getElementById("cph").onclick = function () { var b = this; b.disabled = true; api({ api: "checkin_photos", row: row }).then(function (r) { if (r && r.ok) { try { tg && tg.close(); } catch (e) {} } else { b.disabled = false; toast("Не получилось"); } }); };
+}
+
+/* ---------- Запись на занятие ---------- */
+var BK = { data: null, date: "", row: 0, format: "", gym: null, opt: null };
+function showBook(from) {
+  S.sub = "book"; S.bookFrom = from || S.bookFrom || S.tab;
+  var go = function (r) { BK.data = r; if (S.sub === "book") renderBook(); };
+  var c = cget("book"); if (c) go(c); else skeleton();
+  api({ api: "book_slots" }).then(function (r) { if (r && r.ok) { cset("book", r); go(r); } else if (!c) { S.sub = null; errorScreen(r && r.error, showBook); } });
+}
+function renderBook() {
+  var d = BK.data, o = subBar("Запись на занятие");
+  o += '<section class="card"><div class="label">🗓️ Мои записи</div>';
+  if (!d.mine.length) o += '<div class="muted">Предстоящих записей нет.</div>';
+  d.mine.forEach(function (b) {
+    o += '<div class="entry" style="flex-wrap:wrap"><div class="en"><div>' + esc(b.label) + ', ' + esc(b.time) + '</div><div class="muted">' + (b.format === "offline" ? 'Офлайн' + (b.gym ? ', ' + esc(b.gym.split(" — ")[0]) : '') : b.format === "online" ? 'Онлайн' : '') + ' · ' + (b.pending ? 'ждёт подтверждения' : 'подтверждена ✅') + '</div></div>' +
+      (b.canCancel ? '<button class="btn" data-cancel="' + b.row + '">Отменить</button>' : '<span class="muted" style="font-size:12px">отмена: напиши тренеру</span>') + '</div><div id="cx' + b.row + '" hidden class="cancelbox"><textarea id="cr' + b.row + '" rows="2" placeholder="Причина отмены (тренер увидит)"></textarea><div class="tools"><button class="btn" data-cancelok="' + b.row + '">Отменить запись</button><button class="btn ghost" data-cancelno="' + b.row + '">Оставить</button></div></div>';
+  });
+  o += '</section><section class="card"><div class="label">📅 Выбери день</div>';
+  if (!d.dates.length) o += '<div class="muted">Свободных дат пока нет. Загляни позже, я сообщу, когда откроются новые окна.</div>';
+  o += '<div class="chips">' + d.dates.map(function (x) { return '<button class="fchip ' + (BK.date === x.date ? 'on' : '') + (x.times.length ? '' : ' off') + '" data-bd="' + x.date + '">' + esc(x.label) + '</button>'; }).join("") + '</div>';
+  var cur = d.dates.filter(function (x) { return x.date === BK.date; })[0];
+  if (cur) {
+    if (!cur.times.length) o += '<div class="muted">На этот день всё занято.</div><button class="btn" data-cmd="/waitlist">🔔 Встать в лист ожидания</button>';
+    else o += '<div class="label" style="margin-top:6px">Время</div><div class="timegrid">' + cur.times.map(function (t) { return '<button class="fchip ' + (BK.row === t.row ? 'on' : '') + '" data-bt="' + t.row + '">' + esc(t.time) + '</button>'; }).join("") + '</div>';
+  }
+  o += '</section><div id="bkfmt"></div>';
+  view.innerHTML = o;
+  document.getElementById("sback").onclick = function () { S.sub = null; setTab(S.bookFrom === "today" ? "today" : "more"); };
+  Array.prototype.forEach.call(view.querySelectorAll("[data-bd]"), function (b) { b.onclick = function () { BK.date = b.dataset.bd; BK.row = 0; BK.format = ""; haptic(); renderBook(); }; });
+  Array.prototype.forEach.call(view.querySelectorAll("[data-bt]"), function (b) { b.onclick = function () { BK.row = +b.dataset.bt; BK.format = ""; haptic(); pickFormat(); }; });
+  Array.prototype.forEach.call(view.querySelectorAll("[data-cancel]"), function (b) { b.onclick = function () { document.getElementById("cx" + b.dataset.cancel).hidden = false; b.hidden = true; }; });
+  Array.prototype.forEach.call(view.querySelectorAll("[data-cancelno]"), function (b) { b.onclick = function () { renderBook(); }; });
+  Array.prototype.forEach.call(view.querySelectorAll("[data-cancelok]"), function (b) { b.onclick = function () { var row = +b.dataset.cancelok; b.disabled = true; api({ api: "book_cancel", row: row, reason: document.getElementById("cr" + row).value }).then(function (r) { if (r && r.ok) { toast("Запись отменена"); cset("book", null); cset("home", null); S.home = null; showBook(); } else { b.disabled = false; toast(r && r.error === "late" ? "Уже поздно отменять, напиши тренеру" : "Не получилось, попробуй ещё раз"); } }); }; });
+  if (BK.row) pickFormat(true);
+}
+function pickFormat(keep) {
+  var box = document.getElementById("bkfmt"); if (!box) return;
+  box.innerHTML = '<section class="card"><div class="muted">Проверяю окно…</div></section>';
+  api({ api: "book_options", row: BK.row }).then(function (r) {
+    if (!r || !r.ok) { BK.row = 0; toast(r && r.error === "taken" ? "Это окно уже занято, выбери другое" : "Не получилось"); cset("book", null); return showBook(); }
+    BK.opt = r;
+    var o = '<section class="card"><div class="label">Как удобнее?</div><div class="seg" id="bkseg"><button data-bf="online" class="' + (BK.format === "online" ? 'on' : '') + '">💻 Онлайн</button><button data-bf="offline" class="' + (BK.format === "offline" ? 'on' : '') + '"' + (r.gyms.length ? '' : ' disabled') + '>🏋️ Офлайн</button></div>';
+    if (!r.gyms.length) o += '<div class="muted">Офлайн на это время недоступен (близко другая запись), доступен онлайн.</div>';
+    if (BK.format === "offline") o += '<div class="muted">Зал</div>' + r.gyms.map(function (g) { return '<button class="item" data-bg="' + g.idx + '" style="' + (BK.gym === g.idx ? 'font-weight:600' : '') + '"><span>' + (BK.gym === g.idx ? '✓ ' : '') + esc(g.name) + '<small>' + esc(g.address) + '</small></span></button>'; }).join("");
+    o += '</section><button class="btn primary" id="bkok"' + (BK.format && (BK.format === "online" || BK.gym !== null) ? '' : ' disabled') + '>Записаться на ' + esc(r.label) + ', ' + esc(r.time) + '</button>';
+    box.innerHTML = o;
+    Array.prototype.forEach.call(box.querySelectorAll("[data-bf]"), function (b) { b.onclick = function () { BK.format = b.dataset.bf; BK.gym = BK.format === "offline" && r.gyms.length === 1 ? r.gyms[0].idx : null; haptic(); pickFormat(true); }; });
+    Array.prototype.forEach.call(box.querySelectorAll("[data-bg]"), function (b) { b.onclick = function () { BK.gym = +b.dataset.bg; pickFormat(true); }; });
+    var ok = document.getElementById("bkok");
+    if (!keep) box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    ok.onclick = function () { ok.disabled = true; ok.textContent = "Записываю…"; api({ api: "book", row: BK.row, format: BK.format, gym: BK.gym }).then(function (x) { if (x && x.ok) { haptic("ok"); cset("book", null); cset("home", null); S.home = null; doneBooking(r); } else { toast(x && x.error === "taken" ? "Это окно уже занято, выбери другое" : "Не получилось, попробуй ещё раз"); BK.row = 0; cset("book", null); showBook(); } }); };
+  });
+}
+function doneBooking(r) {
+  S.sub = "bookdone";
+  var o = '<div class="center"><div class="bigemoji">📅</div><h2>Записала тебя на ' + esc(r.label) + ', ' + esc(r.time) + '!</h2><div class="muted">Дождись подтверждения от тренера: оно придёт в чат. Для подтверждения нужна оплата.</div><button class="btn primary" id="bpay" style="max-width:300px">💳 Реквизиты для оплаты</button><button class="btn" id="bdone" style="max-width:300px">Готово</button></div>';
+  view.innerHTML = o; BK.date = ""; BK.row = 0; BK.format = ""; BK.gym = null;
+  document.getElementById("bdone").onclick = function () { S.sub = null; setTab(S.bookFrom === "today" ? "today" : "more"); };
+  document.getElementById("bpay").onclick = function () { showCards(function () { doneBooking(r); }); };
+}
+
+/* ---------- Подписка и оплата ---------- */
+function cardsHtml(t) {
+  return esc(t).replace(/\d{4} \d{4} \d{4} \d{4}/g, function (m) { return '<button class="copy" data-copy="' + m.replace(/ /g, "") + '">' + m + ' <small>копировать</small></button>'; }).replace(/\n/g, "<br>");
+}
+function bindCopy() { Array.prototype.forEach.call(view.querySelectorAll("[data-copy]"), function (b) { b.onclick = function () { toast(copyText(b.dataset.copy) ? "Номер карты скопирован" : "Не получилось скопировать"); haptic(); }; }); }
+function showCards(back) {
+  S.sub = "cards"; skeleton();
+  api({ api: "pay_cards" }).then(function (r) {
+    if (!r || !r.ok) return errorScreen(r && r.error, function () { showCards(back); });
+    view.innerHTML = subBar("Реквизиты") + '<section class="card"><div style="line-height:1.7">' + cardsHtml(r.cards) + '</div></section><div class="muted">После оплаты пришли скрин в чат с ботом, и тренер подтвердит.</div><button class="btn primary" id="topchat">Открыть чат и отправить скрин</button>';
+    document.getElementById("sback").onclick = back; bindCopy();
+    document.getElementById("topchat").onclick = function () { try { tg && tg.close(); } catch (e) {} };
+  });
+}
+function showPay() {
+  S.sub = "pay"; skeleton();
+  api({ api: "pay_list" }).then(function (r) {
+    if (!r || !r.ok) { S.sub = null; return errorScreen(r && r.error, showPay); }
+    var h = S.home && S.home.sub;
+    var o = subBar("Подписка и оплата");
+    o += '<section class="card"><div class="label">💛 Твой доступ</div><div>' + (h ? esc(h.tier || "Подписка") + ' до ' + esc(h.until) : 'Активен') + '</div>' + (h && h.daysLeft <= 7 ? '<div class="muted">Осталось ' + Math.max(0, h.daysLeft) + ' ' + plural(Math.max(0, h.daysLeft), "день", "дня", "дней") + '</div>' : '') + '</section>';
+    o += '<div class="label" style="margin:2px 4px">Что хочешь оплатить?</div><div class="card list" style="gap:0">' + r.items.map(function (s) { return '<button class="item" data-pk="' + s.key + '"><span>' + esc(s.title) + '<small>' + num(s.price) + ' ₽</small></span><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>'; }).join("") + '</div>';
+    view.innerHTML = o; window.scrollTo(0, 0);
+    document.getElementById("sback").onclick = function () { S.sub = null; setTab(S.payFrom === "today" ? "today" : "more"); };
+    Array.prototype.forEach.call(view.querySelectorAll("[data-pk]"), function (b) { b.onclick = function () { b.disabled = true; api({ api: "pay_start", key: b.dataset.pk }).then(function (x) {
+      if (!x || !x.ok) { b.disabled = false; return toast("Не получилось, попробуй ещё раз"); }
+      view.innerHTML = subBar("К оплате") + '<section class="card"><h2>' + esc(x.title) + '</h2><div class="num">' + num(x.price) + ' ₽</div></section><section class="card"><div style="line-height:1.7">' + cardsHtml(x.cards) + '</div></section><div class="muted">Тренер уже получил уведомление. После оплаты пришли скрин в чат с ботом, и я всё открою.</div><button class="btn primary" id="topchat">Открыть чат и отправить скрин</button>';
+      bindCopy(); window.scrollTo(0, 0);
+      document.getElementById("sback").onclick = showPay;
+      document.getElementById("topchat").onclick = function () { try { tg && tg.close(); } catch (e) {} };
+    }); }; });
+  });
+}
+
+/* ---------- Анкета ---------- */
+function showOnboard() {
+  S.sub = "onb"; skeleton();
+  api({ api: "onboard_get" }).then(function (r) {
+    if (!r || !r.ok) { S.sub = null; return errorScreen(r && r.error, showOnboard); }
+    var o = subBar("Анкета") + '<div class="muted">Это поможет мне точнее подобрать программу. Отвечай своими словами.</div><section class="card">';
+    r.steps.forEach(function (s, i) {
+      var short = s.key === "daysPerWeek" || s.key === "targetWeight";
+      o += '<label class="fl">' + (i + 1) + '. ' + esc(s.prompt) + (s.skippable ? ' <span class="muted">(можно пропустить)</span>' : '') + (short ? '<input class="search" id="on_' + s.key + '" inputmode="decimal">' : '<textarea id="on_' + s.key + '" rows="2"></textarea>') + '</label>';
+    });
+    o += '</section><button class="btn primary" id="onok">Отправить анкету</button>';
+    view.innerHTML = o; window.scrollTo(0, 0);
+    document.getElementById("sback").onclick = function () { S.sub = null; setTab("more"); };
+    document.getElementById("onok").onclick = function () {
+      var ans = {}, miss = null; r.steps.forEach(function (s) { ans[s.key] = document.getElementById("on_" + s.key).value.trim(); if (!ans[s.key] && !s.skippable && !miss) miss = s; });
+      if (miss) return toast("Ответь на вопрос: " + miss.prompt.slice(0, 40) + "…");
+      var b = this; b.disabled = true; b.textContent = "Отправляю…";
+      api({ api: "onboard_save", answers: ans }).then(function (x) { if (x && x.ok) { haptic("ok"); view.innerHTML = '<div class="center"><div class="bigemoji">💛</div><h2>Спасибо! Записала всё</h2><div class="muted">Это сильно поможет мне точнее подобрать тебе программу.</div><button class="btn primary" id="odone" style="max-width:300px">Готово</button></div>'; document.getElementById("odone").onclick = function () { S.sub = null; setTab("more"); }; } else { b.disabled = false; b.textContent = "Отправить анкету"; toast("Не получилось, попробуй ещё раз"); } });
+    };
+  });
+}
+
 /* ---------- Ещё ---------- */
 var MORE = [
-  ["Питание", [["Распознать по фото", "Пришли фото, ИИ посчитает калории", "/foodphoto"], ["Моя норма калорий", "", "/caloriegoal"]]],
-  ["Прогресс", [["Чек-ин", "Замеры и фото", "/checkin"], ["Мой прогресс", "Графики веса и замеров", "/progress"], ["История", "", "/history"], ["Анкета", "", "/onboarding"]]],
-  ["Запись и связь", [["Записаться на тренировку", "", "/schedule"], ["Мои записи", "", "/mybookings"], ["Задать вопрос тренеру", "", "/question"], ["Отзывы", "", "/reviews"]]],
-  ["Подписка", [["Цены и оплата", "", "/price"], ["Продлить доступ", "", "/subscribe"]]]
+  ["Запись", [["Записаться на занятие", "Свободные окна и мои записи", "@book"]]],
+  ["Питание", [["Распознать по фото", "Пришли фото, ИИ посчитает калории", "/foodphoto"], ["Моя норма калорий", "Рассчитаем вместе в чате", "/caloriegoal"]]],
+  ["Обо мне", [["Анкета", "Цели, опыт, ограничения", "@onboard"], ["Подписка и оплата", "Срок доступа, тарифы, реквизиты", "@pay"]]],
+  ["Связь", [["Задать вопрос тренеру", "Ответ придёт в чат", "/question"], ["Цены на услуги", "", "/price"], ["Отзывы", "", "/reviews"]]]
 ];
 function showMore() {
   var o = '<h1>Ещё</h1>';
   MORE.forEach(function (g) {
     o += '<div><div class="label" style="margin:6px 4px 8px">' + g[0] + '</div><div class="card list" style="gap:0">';
-    g[1].forEach(function (it) { o += '<button class="item" data-cmd="' + it[2] + '"><span>' + it[0] + (it[1] ? '<small>' + it[1] + '</small>' : '') + '</span><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>'; });
+    g[1].forEach(function (it) { o += '<button class="item" ' + (it[2].charAt(0) === "@" ? 'data-go="' + it[2].slice(1) + '"' : 'data-cmd="' + it[2] + '"') + '><span>' + it[0] + (it[1] ? '<small>' + it[1] + '</small>' : '') + '</span><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>'; });
     o += '</div></div>';
   });
   if (S.trainer) o += '<button class="btn primary" id="tback">Вернуться в тренерский режим</button>';
-  o += '<div class="muted" style="text-align:center">Эти разделы откроются в чате с ботом</div>';
+  o += '<div class="muted" style="text-align:center">Фото и вопросы тренеру откроются в чате с ботом</div>';
   view.innerHTML = o;
   var tb = document.getElementById("tback"); if (tb) tb.onclick = function () { setClientView(false); };
 }
@@ -685,7 +969,7 @@ function renderCard(r) {
     o += '<div class="label" style="margin-top:6px">Назначенные программы</div>';
     r.programs.forEach(function (p) { o += '<div class="row"><span>' + esc(p.name) + ' <span class="muted">· ' + p.n + ' упр.</span></span><button class="btn" data-copy="' + esc(p.id) + '" data-pname="' + esc(p.name) + '">Копировать</button></div>'; });
   }
-  o += '</section>';
+  o += '<button class="btn" data-assign="' + esc(r.id) + '" style="align-self:flex-start">＋ Назначить тренировку</button></section>';
   if (r.best.length) { o += '<section class="card"><div class="label">Рабочие веса</div>'; r.best.forEach(function (b) { o += '<div class="row"><span>' + esc(b.name) + '</span><span><b>' + fmt(b.best) + ' кг</b>' + (b.n > 1 && b.best > b.first ? ' <span class="chip">' + sgn(b.best - b.first) + '</span>' : '') + '</span></div>'; }); o += '</section>'; }
   o += '<section class="card"><div class="label">Питание</div><div>Сегодня: <b>' + num(r.nutrition.today) + '</b>' + (r.nutrition.goal ? ' из ' + num(r.nutrition.goal) : '') + ' ккал</div>' +
     '<div class="muted">' + (r.nutrition.avg7 !== null ? 'В среднем за 7 дней: ' + num(r.nutrition.avg7) + ' ккал (' + r.nutrition.days7 + ' ' + plural(r.nutrition.days7, "день", "дня", "дней") + ' с записями)' : 'За неделю записей нет') + '</div>' +
@@ -701,9 +985,34 @@ view.addEventListener("click", function (e) {
   if (p) { toast("Присылаю фото в чат…"); api({ api: "t_photos", id: p.dataset.photos }).then(function (x) { if (x && x.ok) { try { tg && tg.close(); } catch (er) {} } else toast("Не получилось"); }); return; }
   var c = e.target.closest("[data-copy]");
   if (c) return openCopySheet(c.dataset.copy, c.dataset.pname);
+  var as = e.target.closest("[data-assign]");
+  if (as) return openAssignSheet(as.dataset.assign);
   var d = e.target.closest("[data-cmd-client]");
   if (d) { goBot("/clientfood"); }
 });
+function openAssignSheet(cid) {
+  var old = document.getElementById("sheet"); if (old) old.remove();
+  var el = document.createElement("div"); el.id = "sheet";
+  el.innerHTML = '<div class="sheet-bg"></div><div class="sheet-in"><div class="row"><b>Новая тренировка</b><button class="btn ghost" id="sclose">Закрыть</button></div><div class="muted" style="margin:4px 0 8px">Первая строка — название, дальше упражнения с подходами и повторами. Упражнения подберутся из каталога сами.</div>' +
+    '<textarea id="atxt" rows="8" placeholder="Низ А\nЖим ногами 4x10-12\nРумынская тяга 3x10\nПланка 3x40"></textarea><button class="btn primary" id="aok" style="margin-top:10px">Назначить</button><div id="ares" class="muted" style="margin-top:8px"></div></div>';
+  document.body.appendChild(el);
+  var close = function () { el.remove(); };
+  el.querySelector(".sheet-bg").onclick = close; document.getElementById("sclose").onclick = close;
+  document.getElementById("aok").onclick = function () {
+    var b = this, t = document.getElementById("atxt").value; if (t.trim().split("\n").length < 2) return toast("Нужно название и хотя бы одно упражнение");
+    b.disabled = true; b.textContent = "Назначаю…";
+    api({ api: "t_assign", id: cid, text: t }).then(function (x) {
+      if (x && x.ok) {
+        haptic("ok"); cset("tcl_" + cid, null);
+        var m = '✅ «' + esc(x.name) + '» назначена: ' + x.count + ' ' + plural(x.count, "упражнение", "упражнения", "упражнений") + '.';
+        if (x.failed && x.failed.length) m += '<br>Не разобрала строки: ' + x.failed.map(esc).join(", ") + '.';
+        if (x.unmatched && x.unmatched.length) m += '<br>Нет в каталоге: ' + x.unmatched.map(esc).join(", ") + '. Варианты замены пришли в чат.';
+        document.getElementById("ares").innerHTML = m; b.textContent = "Готово"; b.onclick = function () { close(); openCard(cid); };
+        b.disabled = false;
+      } else { b.disabled = false; b.textContent = "Назначить"; toast(x && x.error === "format" ? "Не разобрала. Формат: название, потом упражнение 4x10" : "Не получилось"); }
+    });
+  };
+}
 function openCopySheet(wid, pname) {
   var old = document.getElementById("sheet"); if (old) old.remove();
   var cl = (S.clients || []).filter(function (c) { return c.active && c.id !== S.tcard; });
@@ -852,12 +1161,28 @@ function demoApi(req) {
     food_db: { ok: true, items: [[2, "Гречка варёная", 110, 4, 1, 21, "Крупы"], [3, "Куриная грудка", 165, 31, 3.6, 0, "Мясо"], [4, "Яблоко", 52, 0.3, 0.2, 14, "Фрукты"], [5, "Творог 5%", 121, 17, 5, 3, "Молочные"], [6, "Овсянка на воде", 70, 2.5, 1.5, 12, "Крупы"]] },
     food_suggest: { ok: true, fav: ["Гречка варёная"], recent: [{ name: "Куриная грудка", grams: 150 }, { name: "Яблоко", grams: 180 }] },
     food_add: { ok: true, row: 9 }, food_custom: { ok: true, row: 10 }, food_del: { ok: true }, food_repeat: { ok: true, count: 3 }, food_fav: { ok: true },
+    ex_list: { ok: true, cats: ["Грудь", "Спина", "Дельты", "Руки (бицепс,трицпс,предплечья)", "Ноги и Ягодицы", "Пресс", "Функциональные/кардио/растяжка"], subs: { "Ноги и Ягодицы": ["Ноги", "Ягодицы"], "Руки (бицепс,трицпс,предплечья)": ["Бицепс", "Трицепс", "Предплечья"] },
+      items: [[1, "Армейский жим", "Дельты", "", 1, 1], [2, "Жим ногами горизонтальной платформы", "Ноги и Ягодицы", "Ноги", 1, 0], [3, "Румынская тяга", "Ноги и Ягодицы", "Ягодицы", 0, 1], [4, "Присед со штангой", "Ноги и Ягодицы", "Ноги", 1, 1], [5, "Ягодичный мост", "Ноги и Ягодицы", "Ягодицы", 1, 1], [6, "Тяга верхнего блока", "Спина", "", 0, 1], [7, "Планка", "Пресс", "", 0, 1], [8, "Сгибание рук со штангой", "Руки (бицепс,трицпс,предплечья)", "Бицепс", 0, 0]] },
+    ex_search: { ok: true, items: [[4, "Присед со штангой", "Ноги и Ягодицы", "Ноги", 1, 1]] },
+    ex_get: { ok: true, number: 4, name: "Присед со штангой", category: "Ноги и Ягодицы", sub: "Ноги", video: true, desc: "Штанга на трапециях, стопы чуть шире плеч. Таз уходит назад и вниз, колени идут по линии носков, спина нейтральная. Вставай на выдохе." },
+    history: { ok: true, items: [{ date: "03.11.2026", name: "Тренировка А · ноги и ягодицы", finished: true, results: [{ name: "Жим ногами", weight: 60 }, { name: "Румынская тяга", weight: 45 }, { name: "Планка", weight: null }] }, { date: "30.10.2026", name: "Тренировка Б · верх", finished: false, results: [{ name: "Тяга верхнего блока", weight: 35 }, { name: "Жим гантелей", weight: null }] }] },
+    book_slots: { ok: true, cancelHours: 1, mine: [{ row: 5, date: "04.11.2026", time: "18:00", label: "04.11 ср", pending: false, format: "offline", gym: "Спорт-стиль — Адлер, Свердлова 55", canCancel: true }],
+      dates: [{ date: "05.11.2026", label: "05.11 чт", times: [{ row: 7, time: "10:00" }, { row: 8, time: "12:00" }, { row: 9, time: "16:30" }] }, { date: "06.11.2026", label: "06.11 пт", times: [] }, { date: "07.11.2026", label: "07.11 сб", times: [{ row: 12, time: "11:00" }] }] },
+    book_options: { ok: true, date: "05.11.2026", time: "10:00", label: "05.11 чт", gyms: [{ idx: 0, name: "Спорт-стиль", address: "Адлер, Свердлова 55" }] }, book: { ok: true }, book_cancel: { ok: true },
+    progress: { ok: true, count: 4, height: 168, goalWeight: 62, streak: 3, firstDate: "04.10.2026", lastDate: "30.10.2026", bmiFirst: 24.8, bmiLast: 23.9,
+      first: { weight: 70, arm: 30, chest: 90, waist: 75, hips: 100, thigh: 55, calf: 35, mood: 7 }, last: { weight: 67.2, arm: 30, chest: 89, waist: 71, hips: 98, thigh: 54, calf: 35, mood: 8 },
+      series: [{ d: "04.10", weight: 70 }, { d: "11.10", weight: 69 }, { d: "18.10", weight: 68.4 }, { d: "30.10", weight: 67.2 }] },
+    checkin_save: { ok: true, row: 5 }, checkin_photos: { ok: true },
+    pay_list: { ok: true, items: [{ key: "bot", title: "Подписка на бот (месяц)", price: 500 }, { key: "support", title: "Сопровождение (месяц)", price: 7000 }, { key: "prog", title: "Программа зал/дом", price: 2000 }, { key: "on1", title: "Онлайн-тренировка, 1 шт.", price: 1300 }] },
+    pay_start: { ok: true, title: "Сопровождение (месяц)", price: 7000, cards: "Перевод можно сделать на любую из карт ниже\nОбязательно укажи комментарий к платежу.\n\nТ-банк:\n2200 0000 0000 0001\n\nСбер:\n2202 0000 0000 0002" },
+    pay_cards: { ok: true, cards: "Т-банк:\n2200 0000 0000 0001\n\nСбер:\n2202 0000 0000 0002" },
+    onboard_get: { ok: true, steps: [{ key: "goal", prompt: "Какая твоя главная цель?", skippable: false }, { key: "experience", prompt: "Какой у тебя опыт тренировок?", skippable: false }, { key: "limitations", prompt: "Есть ли травмы или ограничения?", skippable: true }, { key: "daysPerWeek", prompt: "Сколько дней в неделю готова тренироваться?", skippable: false }, { key: "targetWeight", prompt: "Какой вес хочешь?", skippable: false }] }, onboard_save: { ok: true },
     t_panel: { ok: true, active: 14, support: 6, pay: { count: 5, sum: 18400 }, noWorkout: [{ id: "1", name: "Анна К.", days: 9 }, { id: "2", name: "Ольга", days: null }], noCheckin: [{ id: "3", name: "Ирина М.", days: 12 }, { id: "1", name: "Анна К.", days: 8 }], expiring: [{ id: "4", name: "Мария", left: 2, tier: "сопровождение" }] },
     t_clients: { ok: true, clients: [{ id: "1", name: "Анна К.", tier: "Сопровождение", active: true, has: true, until: "20 ноября", left: 17, wDays: 9, cDays: 8 }, { id: "2", name: "Ольга", tier: "Бот", active: true, has: true, until: "5 ноября", left: 2, wDays: null, cDays: 3 }, { id: "3", name: "Ирина М.", tier: "Бот", active: true, has: true, until: "30 ноября", left: 27, wDays: 2, cDays: 12 }, { id: "4", name: "Мария", tier: "Сопровождение", active: false, has: true, until: "1 ноября", left: -2, wDays: 5, cDays: 20 }] },
     t_client: { ok: true, id: "1", name: "Анна К.", note: "Боль в колене, без выпадов", sub: { tier: "Сопровождение", until: "20 ноября", active: true }, checkins: [{ d: "04.10", weight: 70, arm: 30, chest: 90, waist: 75, hips: 100, thigh: 55 }, { d: "18.10", weight: 68.5, arm: 30, chest: 90, waist: 73, hips: 99, thigh: 55 }, { d: "26.10", weight: 67.8, arm: 30, chest: 89, waist: 72, hips: 99, thigh: 54 }], checkinCount: 3, withPhotos: 2, workouts: [{ d: "25.10", name: "Тренировка А" }, { d: "22.10", name: "Тренировка Б" }], w7: 0, w30: 6, nutrition: { today: 820, goal: 1700, avg7: 1540, days7: 5 }, profile: [["Цель", "Снижение веса"], ["Опыт", "1 год"]], best: [{ name: "Жим ногами", best: 60, first: 40, n: 6 }], programs: [{ id: "wA", name: "Тренировка А", n: 6 }] },
     t_report: { ok: true, days: 30, rows: [{ id: "1", name: "Анна К.", checkins: 3, weight: 67.8, dWeight: -2.2, waist: 72, dWaist: -3, hips: 99, dHips: -1, workouts: 6 }, { id: "2", name: "Ольга", checkins: 0, workouts: 2 }] },
     t_catalog: { ok: true, items: [{ n: 1, name: "Армейский жим", cat: "Дельты", v: true, d: true, s: true }, { n: 2, name: "Жим ногами горизонтальной платформы", cat: "Ноги", v: true, d: false, s: false }, { n: 3, name: "Румынская тяга", cat: "Ягодицы", v: false, d: true, s: true }] },
-    t_cat_get: { ok: true, n: 2, name: "Жим ногами горизонтальной платформы", cat: "Ноги", v: true, desc: "", syn: "" }, t_cat_set: { ok: true }, t_note: { ok: true }, t_copy: { ok: true }, t_photos: { ok: true }
+    t_cat_get: { ok: true, n: 2, name: "Жим ногами горизонтальной платформы", cat: "Ноги", v: true, desc: "", syn: "" }, t_cat_set: { ok: true }, t_note: { ok: true }, t_copy: { ok: true }, t_assign: { ok: true, name: "Низ А", count: 3, failed: [], unmatched: ["Выпады в смите"] }, t_photos: { ok: true }
   };
   return new Promise(function (res) { setTimeout(function () { var r = JSON.parse(JSON.stringify(D[req.api] || { ok: false })); if (req.api === "home" && /[?&]trainer=1/.test(location.search)) r.trainer = true; if (req.api === "water") { S.home.water.now++; r.water = S.home.water; } res(r); }, 250); });
 }
@@ -868,12 +1193,14 @@ function startApp() {
   try { S.clientView = !!localStorage.getItem("cv_" + UID); } catch (e) {}
   renderTabs(); S.home = null;
   var q = /[?&]w=([^&]+)/.exec(location.search);
-  if (/[?&]go=food/.test(location.search) && !q) { S.clientView = true; renderTabs(); F.pending = true; setTab("food"); }
+  var gm = /[?&]go=([a-z]+)/.exec(location.search), go = gm ? gm[1] : "";
+  if (go && !q && go !== "food" && go !== "x") { S.clientView = true; renderTabs(); S.trainSeg = go === "ex" ? "ex" : go === "hist" ? "hist" : "mine"; S.progSeg = go === "rec" ? "rec" : "body"; var tabOf = { train: "train", ex: "train", hist: "train", progress: "records", rec: "records", more: "more" }[go]; if (tabOf) setTab(tabOf); else if (go === "book" || go === "pay" || go === "onboard" || go === "checkin") { setTab("today"); goApp(go); } else setTab("today"); }
+  else if (go === "food" && !q) { S.clientView = true; renderTabs(); F.pending = true; setTab("food"); }
   else if (q) { S.clientView = true; renderTabs(); setTab("train"); openRun(decodeURIComponent(q[1])); }
   else setTab(S.trainer && !S.clientView ? "tpanel" : "today");
   document.addEventListener("visibilitychange", function () { if (!document.hidden && S.tab === "today" && S.home && !S.run) { S.home = null; showToday(); } });
 }
-if (!DEMO && !(tg && tg.initData)) {
+if (!DEMO && !(tg && tg.initData) && !KB) {
   document.getElementById("tabs").style.display = "none";
   view.innerHTML = '<div class="center"><h2>Valeryiankaa</h2><div class="muted">Это приложение открывается из Телеграма: зайди в чат с ботом и нажми кнопку «Приложение».</div></div>';
 } else {
