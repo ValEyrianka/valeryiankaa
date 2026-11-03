@@ -128,6 +128,22 @@ details summary{list-style:none}details summary::-webkit-details-marker{display:
 [hidden]{display:none!important}
 .subbar{display:flex;align-items:center;margin-left:-6px}.chips.scroll{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}.chips.scroll::-webkit-scrollbar{display:none}.chips.scroll .fchip{flex:none}
 .fchip.off{opacity:.45}.timegrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.timegrid .fchip{padding:8px 4px;text-align:center}
+
+.pnav{justify-content:space-between}.pnav .btn{min-width:44px}
+.pweek{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.pday{display:flex;flex-direction:column;align-items:center;gap:2px;border:1px solid var(--line);background:transparent;border-radius:12px;padding:6px 0;cursor:pointer;min-height:64px;color:inherit}
+.pday small{color:var(--muted);font-size:11px;text-transform:uppercase}.pday b{font-size:15px}
+.pday.today{border-color:var(--accent)}.pday.sel{background:var(--accent-soft)}.pday.past{opacity:.75}
+.pg{display:flex;gap:1px;font-size:11px;min-height:14px;color:var(--muted)}.pg i{font-style:normal}
+i.done,.pgl.done{color:var(--ok)}i.missed,.pgl.missed{color:#c0463c}i.planned,.pgl.planned{color:var(--accent)}
+.pgl{font-style:normal;font-weight:700}
+.pdetail{display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--line);padding-top:10px}
+.pit{display:flex;flex-direction:column;gap:8px}
+.pmove{display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--accent-soft);border-radius:12px;padding:8px 12px;font-size:14px}
+.sw{width:50px;height:30px;border-radius:16px;border:0;background:var(--line);position:relative;cursor:pointer;flex:none;padding:0}
+.sw i{position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:#fff;transition:transform .15s}
+.sw[aria-checked="true"]{background:var(--ok)}.sw[aria-checked="true"] i{transform:translateX(20px)}
+.remrow{min-height:48px}
 .hl{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--line);padding-top:10px;font-size:14px}.cancelbox{width:100%;display:flex;flex-direction:column;gap:8px;padding:6px 0 10px}
 .bigemoji{font-size:44px;line-height:1}.copy{display:flex;align-items:baseline;gap:8px;border:1px dashed var(--line);background:transparent;color:var(--fg);border-radius:10px;padding:6px 10px;margin:2px 0;font:600 17px var(--body);cursor:pointer;letter-spacing:.02em}.copy small{font-weight:400;color:var(--muted);font-size:12px;letter-spacing:0}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
@@ -245,7 +261,7 @@ function setClientView(on) { S.clientView = on; try { localStorage.setItem("cv_"
 /* ---------- Сегодня ---------- */
 function showToday(force) {
   if (S.home && !force) return renderToday();
-  var shown = capi("home", { api: "home" }, function (r) { S.home = r; S.trainer = !!r.trainer; if (S.tab === "today") renderToday(); },
+  var shown = capi("home", { api: "home" }, function (r, stale) { S.home = r; S.trainer = !!r.trainer; if (S.tab === "today") renderToday(); if (!stale) prefetchTabs(); },
     function (r) { errorScreen(r && r.error, function () { showToday(true); }, r && r.why); });
   if (!shown) skeleton();
 }
@@ -264,6 +280,12 @@ function renderToday() {
       '</div><button class="btn primary" data-start="' + esc(w.id) + '">Начать</button></div>';
   } else {
     o += '<div class="card"><div class="label">🏋️ Тренировка</div><div class="muted">Тренер ещё не назначил тебе тренировку. Загляни чуть позже.</div></div>';
+  }
+  if (h.plan) {
+    var pl = h.plan, left = pl.items.filter(function (i) { return !i.done; }), dn = pl.items.filter(function (i) { return i.done; });
+    o += '<div class="card"><div class="row"><div class="label">📅 План недели</div><span class="muted">выполнено ' + pl.done + ' из ' + pl.total + '</span></div>' +
+      '<div>' + (pl.items.length ? (left.length ? 'По плану сегодня: <b>' + left.map(function (i) { return esc(i.name); }).join(", ") + '</b>' : '✓ Сегодняшняя тренировка выполнена') : 'Сегодня по плану отдых 🌿') + '</div>' +
+      '<div class="tools"><button class="btn" data-go="plan">Открыть план</button></div></div>';
   }
   var n = h.nutrition, pct = n.goal ? Math.min(100, Math.round(n.kcal / n.goal * 100)) : 0;
   o += '<div class="card"><div class="label">🍽️ Питание</div>';
@@ -299,6 +321,9 @@ function goApp(k) {
   if (k === "book") return showBook(S.tab);
   if (k === "pay") { S.payFrom = S.tab; return showPay(); }
   if (k === "onboard") return showOnboard();
+  if (k === "plan") { S.trainSeg = "mine"; return setTab("train"); }
+  if (k === "summary") { S.tab = "records"; markTab("records"); return showSummary(); }
+  if (k === "rem") { S.tab = "more"; markTab("more"); return showRemSettings(); }
   if (k === "checkin") { S.tab = "records"; markTab("records"); return showCheckin(); }
 }
 
@@ -310,11 +335,13 @@ function showTrain() {
     if (S.tab !== "train") return;
     S.workouts = r.workouts;
     var o = '<h1>Тренировки</h1>' + trainSeg();
+    if (r.workouts.length) o += '<section class="card" id="planbox"><div class="skel" style="height:120px"></div></section>';
     if (!r.workouts.length) o += '<div class="card"><div class="muted">Тренер ещё не назначил тебе тренировку.</div></div>';
     r.workouts.forEach(function (w) {
       o += '<button class="card" style="text-align:left;cursor:pointer" data-start="' + esc(w.id) + '"><div class="row"><h2>' + esc(w.name) + '</h2>' + (w.next ? '<span class="chip soft">следующая</span>' : '') + '</div><div class="muted">' + w.exercises + ' ' + plural(w.exercises, "упражнение", "упражнения", "упражнений") + '</div></button>';
     });
     view.innerHTML = o;
+    if (r.workouts.length) planLoad();
   }, function (r) { errorScreen(r && r.error, showTrain); });
   if (!shown) skeleton();
 }
@@ -426,9 +453,12 @@ function nwords(t) { return norm(t).replace(/[^a-zа-я0-9 ]/g, " ").split(/\s+/
 function prepDb(items) { F.db = items.map(function (a) { return { row: a[0], name: a[1], kcal: a[2], p: a[3], f: a[4], c: a[5], cat: a[6], w: nwords(a[1]) }; }); F.byName = null; }
 function dbByName(n) { if (!F.byName) { F.byName = {}; (F.db || []).forEach(function (it) { F.byName[norm(it.name)] = it; }); } return F.byName[norm(n)] || null; }
 function loadFoodDb() {
-  if (!F.db) { var c = cget("fooddb"); if (c && c.items) prepDb(c.items); }
+  var c = cget("fooddb");
+  if (!F.db && c && c.items) prepDb(c.items);
+  // справочник большой и меняется редко: перекачиваем не чаще раза в 6 часов (или если его ещё нет)
+  if (F.db && c && c.at && Date.now() - c.at < 6 * 3600 * 1000) return;
   if (F.dbLoading) return; F.dbLoading = true;
-  api({ api: "food_db" }).then(function (r) { F.dbLoading = false; if (r && r.ok) { cset("fooddb", r); prepDb(r.items); } });
+  api({ api: "food_db" }).then(function (r) { F.dbLoading = false; if (r && r.ok) { r.at = Date.now(); cset("fooddb", r); prepDb(r.items); } });
 }
 function searchDb(q) {
   var qw = nwords(q), out = []; if (!qw.length || !F.db) return [];
@@ -601,7 +631,7 @@ view.addEventListener("click", function (e) { var b = e.target.closest("[data-re
 function subBar(title, id) { return '<div class="subbar"><button class="btn ghost" id="' + (id || "sback") + '">‹ Назад</button></div><h1>' + title + '</h1>'; }
 function segHtml(attr, items, cur) { return '<div class="seg" role="tablist">' + items.map(function (it) { return '<button ' + attr + '="' + it[0] + '" class="' + (cur === it[0] ? 'on' : '') + '" role="tab" aria-selected="' + (cur === it[0]) + '">' + it[1] + '</button>'; }).join("") + '</div>'; }
 function trainSeg() { return segHtml("data-ts", [["mine", "Мои"], ["ex", "Справочник"], ["hist", "История"]], S.trainSeg || "mine"); }
-function progSeg() { return segHtml("data-ps", [["body", "Тело"], ["rec", "Рекорды"]], S.progSeg || "body"); }
+function progSeg() { return segHtml("data-ps", [["body", "Тело"], ["rec", "Рекорды"]], S.progSeg || "body") + '<button class="card" style="text-align:left;cursor:pointer" data-go="summary"><div class="row"><div><div class="label">📊 Итоги недели</div><div class="muted">Тренировки, питание, вес, рекорды</div></div>' + chevron() + '</div></button>'; }
 view.addEventListener("click", function (e) {
   var a = e.target.closest("[data-ts]"); if (a) { S.trainSeg = a.dataset.ts; haptic(); return showTrain(); }
   var b = e.target.closest("[data-ps]"); if (b) { S.progSeg = b.dataset.ps; haptic(); return showRecords(); }
@@ -861,11 +891,125 @@ function showOnboard() {
   });
 }
 
+/* ---------- План недели ---------- */
+var PLAN = { off: 0, day: null, move: null, data: null };
+function planKey() { return "plan_" + PLAN.off; }
+function planGlyph(st) { return st === "done" ? "✓" : st === "missed" ? "✕" : "○"; }
+function planDrop() { S.home = null; try { localStorage.removeItem("c_" + UID + "_home"); } catch (e) {} }
+function planRender() {
+  var p = PLAN.data, box = document.getElementById("planbox"); if (!box || !p) return;
+  var o = '<div class="row"><b>План недели</b><span class="muted">' + (p.total ? 'выполнено ' + p.done + ' из ' + p.total : 'пока пусто') + '</span></div>' +
+    '<div class="row pnav"><button class="btn ghost" id="pprev" aria-label="Предыдущая неделя">‹</button><span>' + (p.off === 0 ? 'Эта неделя · ' : p.off === 1 ? 'Следующая · ' : p.off === -1 ? 'Прошлая · ' : '') + esc(p.label) + '</span><button class="btn ghost" id="pnext" aria-label="Следующая неделя">›</button></div>';
+  if (PLAN.move) o += '<div class="pmove">Выбери день для «' + esc(PLAN.move.name) + '» <button class="btn ghost" id="pmcancel">Отмена</button></div>';
+  o += '<div class="pweek">' + p.days.map(function (d) {
+    var cls = 'pday' + (d.today ? ' today' : '') + (PLAN.day === d.date ? ' sel' : '') + (d.past ? ' past' : '');
+    return '<button class="' + cls + '" data-pd="' + d.date + '"><small>' + d.dn + '</small><b>' + d.num + '</b><span class="pg">' +
+      (d.items.length ? d.items.slice(0, 2).map(function (i) { return '<i class="' + i.st + '">' + planGlyph(i.st) + '</i>'; }).join("") + (d.items.length > 2 ? '<i>+</i>' : '') : '·') + '</span></button>';
+  }).join("") + '</div>';
+  var d = null; p.days.forEach(function (x) { if (x.date === PLAN.day) d = x; });
+  if (d && !PLAN.move) {
+    o += '<div class="pdetail"><div class="label">' + d.dn + ', ' + d.num + (d.today ? ' · сегодня' : '') + '</div>';
+    if (!d.items.length) o += '<div class="muted">' + (d.past ? 'В этот день ничего не было запланировано.' : 'Отдых. Можно поставить тренировку:') + '</div>';
+    d.items.forEach(function (i) {
+      o += '<div class="pit ' + i.st + '"><div class="row"><span><i class="pgl ' + i.st + '">' + planGlyph(i.st) + '</i> ' + esc(i.name) + '</span><span class="muted">' + (i.st === "done" ? 'сделано' : i.st === "missed" ? 'пропущено' : 'в плане') + '</span></div><div class="tools">';
+      if (i.st === "done") o += '<button class="btn ghost" data-pa="undo" data-w="' + esc(i.w) + '" data-d="' + d.date + '">Снять отметку</button>';
+      else {
+        if (d.date <= todayKey()) o += '<button class="btn" data-pa="done" data-w="' + esc(i.w) + '" data-d="' + d.date + '">Сделала ✓</button>';
+        o += '<button class="btn ghost" data-pa="move" data-w="' + esc(i.w) + '" data-d="' + d.date + '" data-n="' + esc(i.name) + '">Перенести</button><button class="btn ghost" data-pa="del" data-w="' + esc(i.w) + '" data-d="' + d.date + '">Убрать</button>';
+      }
+      o += '</div></div>';
+    });
+    if (!d.past) {
+      o += '<div class="chips">' + p.workouts.map(function (w) { return '<button class="fchip" data-pa="add" data-w="' + esc(w.id) + '" data-d="' + d.date + '">＋ ' + esc(w.name) + '</button>'; }).join("") + '</div>';
+      if (!p.workouts.length) o += '<div class="muted">Тренер ещё не назначил тренировки.</div>';
+    }
+    o += '</div>';
+  } else if (!d && !PLAN.move) o += '<div class="muted">Нажми на день и поставь тренировку, когда тебе удобно. Расписание можно менять в любой момент.</div>';
+  box.innerHTML = o;
+}
+function todayKey() { var d = new Date(); return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2); }
+function planLoad(force) {
+  var done = function (r) { PLAN.data = r; planRender(); };
+  var c = cget(planKey()); if (c && !force) done(c);
+  api({ api: "plan_get", off: PLAN.off }).then(function (r) { if (r && r.ok) { cset(planKey(), r); done(r); } else if (!c) { var b = document.getElementById("planbox"); if (b) b.innerHTML = '<div class="muted">План не загрузился. Попробуй позже.</div>'; } });
+}
+function planAct(req, okMsg) {
+  return api(req).then(function (r) {
+    if (r && r.ok) { planDrop(); if (okMsg) toast(okMsg); haptic("ok"); }
+    else toast(r && r.error === "past" ? "Этот день уже прошёл" : r && r.error === "future" ? "Отметить можно только сегодня или раньше" : "Не получилось, попробуй ещё раз");
+    planLoad(true);
+  });
+}
+view.addEventListener("click", function (e) {
+  if (!document.getElementById("planbox")) return;
+  var t = e.target.closest("#pprev,#pnext,#pmcancel,[data-pd],[data-pa]"); if (!t) return;
+  if (t.id === "pprev" || t.id === "pnext") { PLAN.off += t.id === "pnext" ? 1 : -1; PLAN.off = Math.max(-8, Math.min(8, PLAN.off)); PLAN.day = null; PLAN.move = null; PLAN.data = cget(planKey()); if (PLAN.data) planRender(); planLoad(true); return; }
+  if (t.id === "pmcancel") { PLAN.move = null; return planRender(); }
+  if (t.dataset.pd) {
+    var date = t.dataset.pd;
+    if (PLAN.move) {
+      if (date < todayKey()) return toast("Этот день уже прошёл");
+      var m = PLAN.move; PLAN.move = null; PLAN.day = date; haptic();
+      return planAct({ api: "plan_set", date: date, workoutId: m.w }, "Перенесла на " + date.slice(8) + "." + date.slice(5, 7));
+    }
+    PLAN.day = PLAN.day === date ? null : date; haptic(); return planRender();
+  }
+  var a = t.dataset.pa, w = t.dataset.w, d = t.dataset.d; haptic();
+  if (a === "move") { PLAN.move = { w: w, name: t.dataset.n }; return planRender(); }
+  if (a === "add") return planAct({ api: "plan_set", date: d, workoutId: w }, "Добавила в план");
+  if (a === "del") return planAct({ api: "plan_remove", date: d, workoutId: w }, "Убрала из плана");
+  if (a === "done") return planAct({ api: "plan_mark", date: d, workoutId: w, done: true }, "Отмечено ✓");
+  if (a === "undo") return planAct({ api: "plan_mark", date: d, workoutId: w, done: false }, "Отметку сняла");
+});
+
+/* ---------- Итоги недели ---------- */
+var SUMM = { off: 0 };
+function showSummary() {
+  S.sub = "summ";
+  var draw = function (s) {
+    if (S.sub !== "summ") return;
+    var o = subBar("Итоги недели") + '<div class="row pnav"><button class="btn ghost" id="sprev" aria-label="Раньше">‹</button><span>' + (s.off === 0 ? 'Эта неделя · ' : s.off === 1 ? 'Прошлая · ' : '') + esc(s.label) + '</span><button class="btn ghost" id="snext" aria-label="Позже"' + (s.off === 0 ? ' disabled' : '') + '>›</button></div>';
+    var good = s.workouts > 0;
+    o += '<section class="card hero"><div class="label">🏋️ Тренировки</div><div class="num">' + s.workouts + '<span class="muted" style="font:14px var(--body)"> ' + plural(s.workouts, "тренировка", "тренировки", "тренировок") + '</span></div>' +
+      (s.plan.total ? '<div class="bar"><i style="width:' + Math.min(100, Math.round(s.plan.done / s.plan.total * 100)) + '%"></i></div><div class="muted">По плану: ' + s.plan.done + ' из ' + s.plan.total + '</div>' : '<div class="muted">' + (good ? 'Отличная работа 💪' : 'На этой неделе пока без тренировок.') + '</div>') + '</section>';
+    o += '<section class="card"><div class="label">🍽️ Питание</div>' + (s.food.days ? '<div class="num">' + s.food.days + '<span class="muted" style="font:14px var(--body)"> из 7 дней записано</span></div><div class="muted">В среднем ' + num(s.food.avg) + ' ккал в день' + (s.food.goal ? ' · норма ' + num(s.food.goal) : '') + '</div>' : '<div class="muted">Записей нет. Даже пара дней в неделю помогает увидеть картину.</div>') + '</section>';
+    o += '<section class="card"><div class="label">⚖️ Вес</div>' + (s.weight ? '<div class="num">' + fmt(s.weight.now) + '<span class="muted" style="font:14px var(--body)"> кг</span>' + (s.weight.diff !== null ? ' <span class="chip soft">' + sgn(s.weight.diff) + ' кг</span>' : '') + '</div>' : '<div class="muted">Чек-ина на этой неделе не было.</div>') + '<div class="tools"><button class="btn" data-go="checkin">' + (s.weight ? 'Ещё чек-ин' : 'Сделать чек-ин') + '</button></div></section>';
+    if (s.records) o += '<section class="card"><div class="label">🏆 Рекорды</div><div class="num">' + s.records + '<span class="muted" style="font:14px var(--body)"> ' + plural(s.records, "новый рекорд", "новых рекорда", "новых рекордов") + '</span></div></section>';
+    if (s.partial) o += '<div class="muted" style="text-align:center">Неделя ещё идёт, цифры обновятся</div>';
+    view.innerHTML = o; window.scrollTo(0, 0);
+    document.getElementById("sback").onclick = function () { S.sub = null; setTab("records"); };
+    document.getElementById("sprev").onclick = function () { SUMM.off = Math.min(12, SUMM.off + 1); showSummary(); };
+    var n = document.getElementById("snext"); n.onclick = function () { SUMM.off = Math.max(0, SUMM.off - 1); showSummary(); };
+  };
+  var shown = capi("summ_" + SUMM.off, { api: "week_summary", off: SUMM.off }, function (r) { draw(r); }, function (r) { errorScreen(r && r.error, showSummary); });
+  if (!shown) skeleton();
+}
+
+/* ---------- Напоминания ---------- */
+function remBind(box) {
+  box.onclick = function (e) {
+    var b = e.target.closest("[data-rem]"); if (!b) return; haptic();
+    api({ api: "rem_set", k: b.dataset.rem, on: b.getAttribute("aria-checked") !== "true" }).then(function (r) { if (r && r.ok) { cset("rem", r); remDraw(box, r); } else toast("Не получилось"); });
+  };
+}
+function remDraw(box, r) {
+  box.innerHTML = r.items.map(function (i) { return '<div class="row remrow"><span>' + esc(i.name) + '</span><button class="sw" role="switch" aria-checked="' + i.on + '" data-rem="' + i.k + '" aria-label="' + esc(i.name) + '"><i></i></button></div>'; }).join("") +
+    '<div class="muted">Не больше одного сообщения в день, только днём и только если дело ещё не сделано.</div>';
+}
+function showRemSettings() {
+  S.sub = "rem";
+  view.innerHTML = subBar("Напоминания") + '<section class="card" id="rembox"><div class="skel"></div></section>';
+  document.getElementById("sback").onclick = function () { S.sub = null; setTab("more"); };
+  var box = document.getElementById("rembox"); remBind(box);
+  var c = cget("rem"); if (c) remDraw(box, c);
+  api({ api: "rem_get" }).then(function (r) { if (r && r.ok && S.sub === "rem") { cset("rem", r); remDraw(box, r); } });
+}
+
 /* ---------- Ещё ---------- */
 var MORE = [
   ["Запись", [["Записаться на занятие", "Свободные окна и мои записи", "@book"]]],
   ["Питание", [["Распознать по фото", "Пришли фото, ИИ посчитает калории", "/foodphoto"], ["Моя норма калорий", "Рассчитаем вместе в чате", "/caloriegoal"]]],
-  ["Обо мне", [["Анкета", "Цели, опыт, ограничения", "@onboard"], ["Подписка и оплата", "Срок доступа, тарифы, реквизиты", "@pay"]]],
+  ["Обо мне", [["Анкета", "Цели, опыт, ограничения", "@onboard"], ["Подписка и оплата", "Срок доступа, тарифы, реквизиты", "@pay"], ["Напоминания", "Что и когда я напоминаю", "@rem"]]],
   ["Связь", [["Задать вопрос тренеру", "Ответ придёт в чат", "/question"], ["Цены на услуги", "", "/price"], ["Отзывы", "", "/reviews"]]]
 ];
 function showMore() {
@@ -962,7 +1106,8 @@ function renderCard(r) {
   }
   o += '</section>';
   // тренировки
-  o += '<section class="card"><div class="label">Тренировки</div><div>За 7 дней: <b>' + r.w7 + '</b> · за 30 дней: <b>' + r.w30 + '</b></div>';
+  o += '<section class="card"><div class="label">Тренировки</div><div>За 7 дней: <b>' + r.w7 + '</b> · за 30 дней: <b>' + r.w30 + '</b></div>' +
+    (r.plan && r.plan.some(function (x) { return x.total; }) ? '<div class="muted">План недели: ' + r.plan.filter(function (x) { return x.total; }).map(function (x) { return x.label + ' — ' + x.done + ' из ' + x.total; }).join(' · ') + '</div>' : '<div class="muted">План на неделю клиентка пока не составила</div>');
   r.workouts.forEach(function (w) { o += '<div class="row muted"><span>' + esc(w.name) + '</span><span>' + w.d + '</span></div>'; });
   if (!r.workouts.length) o += '<div class="muted">Завершённых тренировок нет</div>';
   if (r.programs.length) {
@@ -1143,6 +1288,35 @@ function showTMore() {
 
 
 /* ---------- демо-режим (?demo=1, для просмотра в браузере) ---------- */
+var DP = null, DREM = { w: 1, c: 1, f: 1, s: 1 };
+function demoPlan(req) {
+  var a = req.api; if (!/^(plan_|week_summary|rem_|home$)/.test(a)) return null;
+  var iso = function (d) { return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2); };
+  var add = function (d, n) { var x = new Date(d.getTime()); x.setDate(x.getDate() + n); return x; };
+  var now = new Date(); now.setHours(12, 0, 0, 0);
+  var mon = add(now, -((now.getDay() + 6) % 7)), T = { wA: "Тренировка А · ноги и ягодицы", wB: "Тренировка Б · верх", wC: "Тренировка В · фулбади" };
+  if (!DP) DP = [{ d: iso(add(mon, 0)), w: "wA", done: true }, { d: iso(add(mon, 2)), w: "wB", done: false }, { d: iso(add(mon, 4)), w: "wA", done: false }];
+  var MS = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
+  var get = function (off) {
+    var m = add(mon, off * 7), days = [], done = 0, total = 0, i;
+    for (i = 0; i < 7; i++) {
+      var dd = add(m, i), k = iso(dd), items = [];
+      DP.forEach(function (e) { if (e.d === k) { total++; if (e.done) done++; items.push({ w: e.w, name: T[e.w], st: e.done ? "done" : (k < iso(now) ? "missed" : "planned") }); } });
+      days.push({ date: k, dn: ["пн", "вт", "ср", "чт", "пт", "сб", "вс"][i], num: dd.getDate(), today: k === iso(now), past: k < iso(now), items: items });
+    }
+    var e2 = add(m, 6);
+    return { ok: true, off: off, label: m.getDate() + (m.getMonth() !== e2.getMonth() ? " " + MS[m.getMonth()] : "") + " – " + e2.getDate() + " " + MS[e2.getMonth()], days: days, done: done, total: total, workouts: [{ id: "wA", name: T.wA }, { id: "wB", name: T.wB }, { id: "wC", name: T.wC }] };
+  };
+  if (a === "plan_get") return get(req.off || 0);
+  if (a === "plan_set") { var ex = DP.filter(function (e) { return e.w === req.workoutId && !e.done && e.d >= iso(add(new Date(req.date + "T12:00:00"), -((new Date(req.date + "T12:00:00").getDay() + 6) % 7))) && e.d <= iso(add(new Date(req.date + "T12:00:00"), 6 - ((new Date(req.date + "T12:00:00").getDay() + 6) % 7))); })[0]; if (ex) ex.d = req.date; else DP.push({ d: req.date, w: req.workoutId, done: false }); return { ok: true }; }
+  if (a === "plan_remove") { DP = DP.filter(function (e) { return !(e.d === req.date && e.w === req.workoutId); }); return { ok: true }; }
+  if (a === "plan_mark") { DP.forEach(function (e) { if (e.d === req.date && e.w === req.workoutId) e.done = !!req.done; }); return { ok: true }; }
+  if (a === "week_summary") return { ok: true, off: req.off || 0, label: get(req.off || 0).label, workouts: 2, plan: { done: 2, total: 3 }, food: { days: 5, avg: 1640, goal: 1700 }, weight: { now: 68.4, diff: -0.6 }, records: 2, partial: !req.off };
+  if (a === "rem_get" || a === "rem_set") { if (a === "rem_set") DREM[req.k] = req.on ? 1 : 0; var NM = { w: "Тренировка по плану", c: "Чек-ин в понедельник", f: "Вечером про питание", s: "Итоги недели" }; return { ok: true, items: ["w", "c", "f", "s"].map(function (k) { return { k: k, name: NM[k], on: DREM[k] !== 0 }; }) }; }
+  if (a === "home") { var g = get(0), td = g.days.filter(function (x) { return x.today; })[0]; D_PLAN = { items: td.items.map(function (i) { return { id: i.w, name: i.name, done: i.st === "done" }; }), done: g.done, total: g.total, hasPlan: true }; return null; }
+  return null;
+}
+var D_PLAN = null;
 function demoApi(req) {
   var D = {
     home: { ok: true, name: "Анна", weekday: "вторник", date: "3 ноября", access: true, sub: { until: "8 ноября", daysLeft: 5, tier: "Сопровождение" }, workout: { id: "wA", name: "Тренировка А · ноги и ягодицы", exercises: 6, count: 3, lastDaysAgo: 2 }, nutrition: { goal: 1700, kcal: 820, protein: 48, entries: 3, proteinGoal: 100 }, water: { now: 3, goal: 8 }, booking: { day: "завтра", time: "18:00", format: "офлайн, Адлер", pending: false } },
@@ -1184,17 +1358,25 @@ function demoApi(req) {
     t_catalog: { ok: true, items: [{ n: 1, name: "Армейский жим", cat: "Дельты", v: true, d: true, s: true }, { n: 2, name: "Жим ногами горизонтальной платформы", cat: "Ноги", v: true, d: false, s: false }, { n: 3, name: "Румынская тяга", cat: "Ягодицы", v: false, d: true, s: true }] },
     t_cat_get: { ok: true, n: 2, name: "Жим ногами горизонтальной платформы", cat: "Ноги", v: true, desc: "", syn: "" }, t_cat_set: { ok: true }, t_note: { ok: true }, t_copy: { ok: true }, t_assign: { ok: true, name: "Низ А", count: 3, failed: [], unmatched: ["Выпады в смите"] }, t_photos: { ok: true }
   };
-  return new Promise(function (res) { setTimeout(function () { var r = JSON.parse(JSON.stringify(D[req.api] || { ok: false })); if (req.api === "home" && /[?&]trainer=1/.test(location.search)) r.trainer = true; if (req.api === "water") { S.home.water.now++; r.water = S.home.water; } res(r); }, 250); });
+  var pr = demoPlan(req); if (pr) D[req.api] = pr;
+  return new Promise(function (res) { setTimeout(function () { var r = JSON.parse(JSON.stringify(D[req.api] || { ok: false })); if (req.api === "home") { if (/[?&]trainer=1/.test(location.search)) r.trainer = true; if (D_PLAN) r.plan = D_PLAN; } if (req.api === "water") { S.home.water.now++; r.water = S.home.water; } res(r); }, 250); });
 }
 
 /* ---------- запуск ---------- */
 setupTelegram();
+// Пока человек смотрит «Сегодня», тихо подгружаем остальные вкладки по очереди (не сразу все: сервер отвечает медленнее при параллельных запросах)
+function prefetchTabs() {
+  if (S.prefetched || !S.home || !S.home.access || (S.trainer && !S.clientView)) return; S.prefetched = true;
+  var jobs = [["workouts", { api: "workouts" }], ["food_0", { api: "food_day", offset: 0 }], ["progress", { api: "progress" }], ["records", { api: "records" }], ["exlist", { api: "ex_list" }]], i = 0;
+  var next = function () { if (i >= jobs.length) { loadFoodDb(); return; } var j = jobs[i++]; if (cget(j[0])) return setTimeout(next, 300); api(j[1]).then(function (r) { if (r && r.ok) cset(j[0], r); setTimeout(next, 1200); }); };
+  setTimeout(next, 2500);
+}
 function startApp() {
   try { S.clientView = !!localStorage.getItem("cv_" + UID); } catch (e) {}
   renderTabs(); S.home = null;
   var q = /[?&]w=([^&]+)/.exec(location.search);
   var gm = /[?&]go=([a-z]+)/.exec(location.search), go = gm ? gm[1] : "";
-  if (go && !q && go !== "food" && go !== "x") { S.clientView = true; renderTabs(); S.trainSeg = go === "ex" ? "ex" : go === "hist" ? "hist" : "mine"; S.progSeg = go === "rec" ? "rec" : "body"; var tabOf = { train: "train", ex: "train", hist: "train", progress: "records", rec: "records", more: "more" }[go]; if (tabOf) setTab(tabOf); else if (go === "book" || go === "pay" || go === "onboard" || go === "checkin") { setTab("today"); goApp(go); } else setTab("today"); }
+  if (go && !q && go !== "food" && go !== "x") { S.clientView = true; renderTabs(); S.trainSeg = go === "ex" ? "ex" : go === "hist" ? "hist" : "mine"; S.progSeg = go === "rec" ? "rec" : "body"; var tabOf = { train: "train", ex: "train", hist: "train", progress: "records", rec: "records", more: "more" }[go]; if (tabOf) setTab(tabOf); else if (go === "book" || go === "pay" || go === "onboard" || go === "checkin" || go === "plan" || go === "summary" || go === "rem") { setTab("today"); goApp(go); } else setTab("today"); }
   else if (go === "food" && !q) { S.clientView = true; renderTabs(); F.pending = true; setTab("food"); }
   else if (q) { S.clientView = true; renderTabs(); setTab("train"); openRun(decodeURIComponent(q[1])); }
   else setTab(S.trainer && !S.clientView ? "tpanel" : "today");
