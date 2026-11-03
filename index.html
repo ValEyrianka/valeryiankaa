@@ -1575,11 +1575,12 @@ view.addEventListener("click", function (e) {
   api({ api: "t_cat_get", number: n }).then(function (r) {
     if (!r || !r.ok) { S.tcard = null; return errorScreen(r && r.error, showCatalog); }
     view.innerHTML = '<div class="row"><button class="btn ghost" id="eback">← К каталогу</button></div><div><div class="eyebrow">№' + r.n + ' · ' + esc(r.cat) + '</div><h1>' + esc(r.name) + '</h1></div>' +
-      '<section class="card"><div class="label">Видео</div><div>' + (r.v ? 'Есть' : 'Нет. Чтобы добавить, пришли файл в чат с ботом с подписью <b>' + r.n + '</b>') + '</div></section>' +
+      '<section class="card"><div class="label">Видео</div><div>' + (r.v ? 'Есть' : 'Нет. Чтобы добавить, пришли файл в чат с ботом с подписью <b>' + r.n + '</b>') + '</div>' + (r.v ? '<button class="btn" id="evid" style="align-self:flex-start;margin-top:8px">▶ Показать видео в чате</button>' : '') + '</section>' +
       '<section class="card"><div class="label">Описание</div><textarea id="edesc" rows="5">' + esc(r.desc) + '</textarea></section>' +
       '<section class="card"><div class="label">Синонимы для поиска</div><input class="search" id="esyn" value="' + esc(r.syn) + '" placeholder="через запятую, например: жим платформы, ногами"></section>' +
       '<button class="btn primary" id="esave">Сохранить</button>';
     document.getElementById("eback").onclick = function () { S.tcard = null; renderCatalog(); window.scrollTo(0, 0); };
+    var ev = document.getElementById("evid"); if (ev) ev.onclick = function () { ev.disabled = true; toast("Присылаю видео в чат…"); api({ api: "video", number: r.n }).then(function (x) { if (x && x.ok) { try { tg && tg.close(); } catch (er) {} } else { ev.disabled = false; toast("Не получилось"); } }); };
     document.getElementById("esave").onclick = function () {
       var bt = this; bt.disabled = true; bt.textContent = "Сохраняю…";
       var d = document.getElementById("edesc").value, s = document.getElementById("esyn").value;
