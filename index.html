@@ -631,7 +631,7 @@ view.addEventListener("click", function (e) { var b = e.target.closest("[data-re
 function subBar(title, id) { return '<div class="subbar"><button class="btn ghost" id="' + (id || "sback") + '">‹ Назад</button></div><h1>' + title + '</h1>'; }
 function segHtml(attr, items, cur) { return '<div class="seg" role="tablist">' + items.map(function (it) { return '<button ' + attr + '="' + it[0] + '" class="' + (cur === it[0] ? 'on' : '') + '" role="tab" aria-selected="' + (cur === it[0]) + '">' + it[1] + '</button>'; }).join("") + '</div>'; }
 function trainSeg() { return segHtml("data-ts", [["mine", "Мои"], ["ex", "Справочник"], ["hist", "История"]], S.trainSeg || "mine"); }
-function progSeg() { return segHtml("data-ps", [["body", "Тело"], ["rec", "Рекорды"]], S.progSeg || "body") + '<button class="card" style="text-align:left;cursor:pointer" data-go="summary"><div class="row"><div><div class="label">📊 Итоги недели</div><div class="muted">Тренировки, питание, вес, рекорды</div></div>' + chevron() + '</div></button>'; }
+function progSeg() { return segHtml("data-ps", [["body", "Тело"], ["rec", "Рекорды"]], S.progSeg || "body") + '<button class="card" style="text-align:left;cursor:pointer" data-go="summary"><div class="row"><div><div class="label">📊 Итоги недели</div><div class="muted">Тренировки, питание, вес, рекорды</div></div><svg viewBox="0 0 24 24" width="18" height="18" style="flex:none;stroke:var(--muted);fill:none;stroke-width:2"><path d="M9 6l6 6-6 6"/></svg></div></button>'; }
 view.addEventListener("click", function (e) {
   var a = e.target.closest("[data-ts]"); if (a) { S.trainSeg = a.dataset.ts; haptic(); return showTrain(); }
   var b = e.target.closest("[data-ps]"); if (b) { S.progSeg = b.dataset.ps; haptic(); return showRecords(); }
