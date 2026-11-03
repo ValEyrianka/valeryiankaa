@@ -1317,17 +1317,17 @@ view.addEventListener("click", function (e) {
 function openWorkoutEditor(wid) {
   var old = document.getElementById("sheet"); if (old) old.remove();
   var el = document.createElement("div"); el.id = "sheet";
-  el.innerHTML = '<div class="sheet-bg"></div><div class="sheet-in" style="max-height:92vh;overflow:auto"><div class="row"><b>Редактор тренировки</b><button class="btn ghost" id="sclose">Закрыть</button></div><style>#sheet input{font:inherit;padding:8px 10px;border:1px solid var(--line,#e2d8d8);border-radius:10px;background:#fff;box-sizing:border-box}</style><div id="wbody" class="muted" style="margin-top:10px">Загружаю…</div></div>';
+  el.innerHTML = '<div class="sheet-bg"></div><div class="sheet-in" style="max-height:92vh;overflow:auto"><div class="row"><b>Редактор тренировки</b><button class="btn ghost" id="sclose">Закрыть</button></div><style>#sheet input{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--fg);box-sizing:border-box}#sheet input::placeholder{color:var(--muted);opacity:.7}#sheet label.lb{display:block;font-size:12px;color:var(--muted);margin:2px 0 4px}</style><div id="wbody" class="muted" style="margin-top:10px">Загружаю…</div></div>';
   document.body.appendChild(el);
   var W = null, dirty = false, pick = null;
   var close = function () { if (dirty && !confirm("Закрыть без сохранения?")) return; el.remove(); };
   el.querySelector(".sheet-bg").onclick = close; document.getElementById("sclose").onclick = close;
   var body = document.getElementById("wbody");
   function draw() {
-    var o = '<input id="wname" value="' + esc(W.name) + '" maxlength="80" style="width:100%;margin-bottom:10px" placeholder="Название">';
+    var o = '<label class="lb">Название тренировки</label><input id="wname" value="' + esc(W.name) + '" maxlength="80" style="width:100%;margin-bottom:10px" placeholder="Название">';
     W.items.forEach(function (it, i) {
       o += '<div class="card" style="margin:0 0 8px;padding:10px"><div class="row"><b>' + (i + 1) + '. ' + esc(it.name) + (it.n ? '' : ' <span class="chip">своё</span>') + '</b></div>' +
-        '<div style="display:flex;gap:6px;align-items:center;margin-top:6px"><input data-s="' + i + '" value="' + esc(it.sets) + '" inputmode="numeric" style="width:48px;text-align:center"> <span>×</span> <input data-r="' + i + '" value="' + esc(it.reps) + '" maxlength="20" style="flex:1;min-width:0" placeholder="10-12 на ногу"></div>' +
+        '<div style="display:flex;gap:6px;margin-top:8px"><label class="lb" style="width:48px;text-align:center;margin:0">Подх.</label><span style="width:10px"></span><label class="lb" style="margin:0">Повторения</label></div><div style="display:flex;gap:6px;align-items:center;margin-top:4px"><input data-s="' + i + '" value="' + esc(it.sets) + '" inputmode="numeric" style="width:48px;text-align:center"> <span>×</span> <input data-r="' + i + '" value="' + esc(it.reps) + '" maxlength="20" style="flex:1;min-width:0" placeholder="10-12 на ногу"></div>' +
         '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><button class="btn ghost" data-up="' + i + '"' + (i ? '' : ' disabled') + '>↑</button><button class="btn ghost" data-dn="' + i + '"' + (i < W.items.length - 1 ? '' : ' disabled') + '>↓</button><button class="btn ghost" data-rep="' + i + '">Заменить</button><button class="btn ghost" data-del="' + i + '">Удалить</button></div></div>';
     });
     o += '<button class="btn" id="wadd" style="margin:4px 0 10px">＋ Добавить упражнение</button><button class="btn primary" id="wsave" style="width:100%">Сохранить</button><button class="btn ghost" id="wdelall" style="width:100%;margin-top:8px">Удалить тренировку</button>';
