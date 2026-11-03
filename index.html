@@ -284,6 +284,7 @@ function showToday(force) {
   if (!shown) skeleton();
 }
 function greeting() { var h = new Date().getHours(); return h < 5 ? "Доброй ночи 🌙" : h < 12 ? "Доброе утро ☀️" : h < 18 ? "Добрый день" : "Добрый вечер 🌙"; }
+
 function renderToday() {
   var h = S.home, name = h.name ? ', ' + esc(h.name) : '';
   var o = '<div class="hdr"><div><div class="eyebrow">' + esc(h.weekday) + ', ' + esc(h.date) + '</div><h1>' + greeting() + name + '</h1></div><img class="ava" src="avatar.jpg" alt="" onerror="this.remove()"></div>';
@@ -747,7 +748,7 @@ function renderBody() {
     view.innerHTML = o; document.getElementById("cin").onclick = showCheckin; return;
   }
   var dw = p.first && p.last ? Math.round((p.last.weight - p.first.weight) * 10) / 10 : 0;
-  o += '<section class="card"><div class="label">Вес</div><div class="num">' + fmt(p.last.weight) + '<span class="muted" style="font:14px var(--body)"> кг</span>' + (p.count > 1 ? ' <span class="chip ' + (dw <= 0 ? '' : 'soft') + '">' + (dw > 0 ? '+' : '') + fmt(dw) + ' с начала</span>' : '') + '</div>';
+  o += '<section class="card"><div class="label">Вес</div><div class="num">' + fmt(p.last.weight) + '<span class="muted" style="font:14px var(--body)"> кг</span>' + (p.count > 1 ? ' <span class="chip ' + ((p.goalWeight && p.first ? (p.goalWeight > p.first.weight ? dw >= 0 : dw <= 0) : dw <= 0) ? '' : 'soft') + '">' + (dw > 0 ? '+' : '') + fmt(dw) + ' с начала</span>' : '') + '</div>';
   if (p.goalWeight) { var left = Math.round((p.goalWeight - p.last.weight) * 10) / 10; o += '<div class="muted">' + (Math.abs(left) < 0.1 ? '🎯 Цель ' + fmt(p.goalWeight) + ' кг достигнута!' : 'Цель ' + fmt(p.goalWeight) + ' кг · осталось ' + (left > 0 ? 'набрать ' : 'сбросить ') + fmt(Math.abs(left)) + ' кг') + '</div>'; }
   if (p.bmiLast) o += '<div class="muted">ИМТ ' + fmt(p.bmiLast) + (p.bmiFirst && p.bmiFirst !== p.bmiLast ? ' (было ' + fmt(p.bmiFirst) + ')' : '') + '</div>';
   if (p.series.length > 1) o += chartSvg(sampleSeries(p.series, 7).map(function (s) { return { w: s.weight, d: s.d }; }), 320, 170);
@@ -1582,7 +1583,7 @@ function demoApi(req) {
     t_cat_get: { ok: true, n: 2, name: "Жим ногами горизонтальной платформы", cat: "Ноги", v: true, desc: "", syn: "" }, t_cat_set: { ok: true }, t_note: { ok: true }, t_copy: { ok: true }, t_assign: { ok: true, name: "Низ А", count: 3, failed: [], unmatched: ["Выпады в смите"] }, t_photos: { ok: true }
   };
   var pr = demoPlan(req); if (pr) D[req.api] = pr;
-  return new Promise(function (res) { setTimeout(function () { var r = JSON.parse(JSON.stringify(D[req.api] || { ok: false })); if (req.api === "home") { if (/[?&]trainer=1/.test(location.search)) r.trainer = true; if (D_PLAN) r.plan = D_PLAN; } if (req.api === "water") { S.home.water.now++; r.water = S.home.water; } res(r); }, 250); });
+  return new Promise(function (res) { setTimeout(function () { var r = JSON.parse(JSON.stringify(D[req.api] || { ok: false })); if (req.api === "home") { if (false) { r.access = false; r.store = { trainer: "valeryiankaa", items: [{ g: "Приложение", i: "🤖", n: "Подписка на бот", p: "500 ₽", per: "в месяц", d: "Тренировки, питание по фото, прогресс и напоминания." }, { g: "Ведение", i: "🤝", n: "Сопровождение", p: "7 000 ₽", per: "в месяц", hit: true, d: "Программа, питание, обратная связь, закрытый канал." }, { g: "Разовые услуги", i: "📋", n: "Программа (зал или дома)", p: "2 000 ₽", d: "Индивидуальная программа под твою цель." }] }; } if (/[?&]trainer=1/.test(location.search)) r.trainer = true; if (D_PLAN) r.plan = D_PLAN; } if (req.api === "water") { S.home.water.now++; r.water = S.home.water; } res(r); }, 250); });
 }
 
 /* ---------- запуск ---------- */
@@ -1599,7 +1600,8 @@ function startApp() {
   renderTabs(); S.home = null;
   var q = /[?&]w=([^&]+)/.exec(location.search);
   var gm = /[?&]go=([a-z]+)/.exec(location.search), go = gm ? gm[1] : "";
-  if (go && !q && go !== "food" && go !== "x") { S.clientView = true; renderTabs(); S.trainSeg = go === "ex" ? "ex" : go === "hist" ? "hist" : "mine"; S.progSeg = go === "rec" ? "rec" : "body"; var tabOf = { train: "train", ex: "train", hist: "train", progress: "records", rec: "records", more: "more" }[go]; if (tabOf) setTab(tabOf); else if (go === "book" || go === "pay" || go === "onboard" || go === "checkin" || go === "plan" || go === "summary" || go === "rem" || go === "photo" || go === "mat") { setTab("today"); goApp(go); } else setTab("today"); }
+  if (go === "foodday" && !q) { S.clientView = true; renderTabs(); setTab("food"); }
+  else if (go && !q && go !== "food" && go !== "x") { S.clientView = true; renderTabs(); S.trainSeg = go === "ex" ? "ex" : go === "hist" ? "hist" : "mine"; S.progSeg = go === "rec" ? "rec" : "body"; var tabOf = { train: "train", ex: "train", hist: "train", progress: "records", rec: "records", more: "more" }[go]; if (tabOf) setTab(tabOf); else if (go === "book" || go === "pay" || go === "onboard" || go === "checkin" || go === "plan" || go === "summary" || go === "rem" || go === "photo" || go === "mat") { setTab("today"); goApp(go); } else setTab("today"); }
   else if (go === "food" && !q) { S.clientView = true; renderTabs(); F.pending = true; setTab("food"); }
   else if (q) { S.clientView = true; renderTabs(); setTab("train"); openRun(decodeURIComponent(q[1])); }
   else setTab(S.trainer && !S.clientView ? "tpanel" : "today");
