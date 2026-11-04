@@ -25,7 +25,12 @@
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.4 var(--body)}
 body{padding:var(--top) max(16px,env(safe-area-inset-left,0px)) calc(92px + var(--bot)) max(16px,env(safe-area-inset-right,0px))}
-button{font:inherit;color:inherit}
+button{font:inherit;color:inherit;touch-action:manipulation}
+button:active:not(:disabled),.tab:active,[data-go]:active,[data-card]:active,.fchip:active{transform:scale(.97);opacity:.8}
+button:disabled{opacity:.6}
+#nbar{position:fixed;left:0;top:0;height:3px;width:100%;z-index:60;background:linear-gradient(90deg,transparent,var(--accent),transparent);background-size:40% 100%;background-repeat:no-repeat;opacity:0;pointer-events:none;transition:opacity .15s}
+#nbar.on{opacity:1;animation:nbar 1s linear infinite}
+@keyframes nbar{from{background-position:-40% 0}to{background-position:140% 0}}
 #view{max-width:480px;margin:0 auto;display:flex;flex-direction:column;gap:14px;animation:fade .2s ease}
 @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 h1{font:600 24px/1.2 var(--body);margin:0;text-wrap:balance}
@@ -203,8 +208,7 @@ function toast(t) { var el = document.getElementById("toast"); el.textContent = 
 /* ---------- обмен данными ---------- */
 // запуск из кнопки под строкой ввода: Telegram не даёт подписанных данных, но в ссылке есть личный ключ
 var KB = (function () { var u = /[?&]u=(\d+)/.exec(location.search), k = /[?&]k=([a-f0-9]{16,64})/.exec(location.search); return u && k ? { u: u[1], k: k[1] } : null; })();
-function api(req) {
-  if (DEMO) return demoApi(req);
+function apiOnce(req) {
   req.initData = tg ? tg.initData : "";
   if (!req.initData && KB) req.kb = KB;
   var ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
@@ -213,6 +217,36 @@ function api(req) {
     .then(function (r) { return r.json(); })
     .then(function (j) { clearTimeout(timer); return j; })
     .catch(function () { clearTimeout(timer); return { ok: false, error: "net" }; });
+}
+// ---- запросы: общий счётчик изменений, индикатор загрузки, защита от двойных нажатий ----
+var MUT = 0, WRITES = 0, LOAD = 0, PENDING_W = {}, nbar = null, nbTimer = null;
+var WRITE_RE = /^(water|water_goal_set|food_add|food_del|food_repeat|food_fav|food_custom|book|book_cancel|rem_set|save|photo_log|checkin_photos|onboard_save|pay_start|mat_send|cmd|t_cat_set|t_wsave|t_wdel|t_slots_add|t_slot_del|t_assign|t_copy|t_note|t_access_set|t_access_revoke|t_photos|t_report)$/;
+function loadStart() {
+  LOAD++;
+  if (LOAD === 1) { clearTimeout(nbTimer); nbTimer = setTimeout(function () { if (!nbar) { nbar = document.createElement("div"); nbar.id = "nbar"; document.body.appendChild(nbar); } nbar.className = "on"; }, 250); }
+}
+function loadEnd() { LOAD = Math.max(0, LOAD - 1); if (!LOAD) { clearTimeout(nbTimer); if (nbar) nbar.className = ""; } }
+// bg = фоновая подгрузка: без индикатора
+function api(req, bg) {
+  var w = WRITE_RE.test(req.api), key = null;
+  if (w) { key = JSON.stringify(req); if (PENDING_W[key]) return PENDING_W[key]; MUT++; WRITES++; } // то же самое изменение уже летит — второе нажатие игнорируем
+  var p;
+  if (DEMO) p = Promise.resolve(demoApi(req));
+  else {
+    if (!bg) loadStart();
+    var t0 = Date.now();
+    p = apiOnce(req).then(function (r) {
+      // чтение при быстром сбое сети: один тихий повтор (изменения не повторяем — чтобы не задвоить)
+      if (!w && r && r.error === "net" && Date.now() - t0 < 8000) return new Promise(function (res) { setTimeout(res, 700); }).then(function () { return apiOnce(req); });
+      return r;
+    }).then(function (r) { if (!bg) loadEnd(); return r; }, function (e) { if (!bg) loadEnd(); throw e; });
+  }
+  if (w) {
+    PENDING_W[key] = p;
+    var fin = function () { MUT++; WRITES = Math.max(0, WRITES - 1); delete PENDING_W[key]; };
+    p.then(fin, fin);
+  }
+  return p;
 }
 function esc(t) { return String(t == null ? "" : t).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
 function fmt(n) { return String(n).replace(".", ","); }
@@ -232,13 +266,19 @@ var UID = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsaf
 function cget(k) { try { return JSON.parse(localStorage.getItem("c_" + UID + "_" + k) || "null"); } catch (e) { return null; } }
 function cset(k, v) { try { localStorage.setItem("c_" + UID + "_" + k, JSON.stringify(v)); } catch (e) {} }
 // render(data) вызывается сначала с сохранёнными данными, потом со свежими
-function capi(key, req, render, onFail, onSame) {
-  var c = cget(key), shown = false, tok = S.navTok, cs = c ? JSON.stringify(c) : null;
+function capi(key, req, render, onFail, onSame, retried) {
+  var c = cget(key), shown = false, tok = S.navTok, mut = MUT, cs = c ? JSON.stringify(c) : null;
   if (c) { shown = true; render(c, true); }
   api(req).then(function (r) {
     if (!r || !r.ok) { if (!shown) onFail(r); return; }
+    if (tok !== S.navTok) { if (mut === MUT && !WRITES) cset(key, r); return; } // пока грузилось, человек ушёл на другой экран
+    // пока грузилось, человек что-то изменил (добавил воду, продукт…): этот ответ устарел,
+    // он не должен «откатить» экран — не рисуем и не кешируем, а спрашиваем заново, когда всё сохранится
+    if ((mut !== MUT || WRITES) && !retried) {
+      { var again = function (n) { if (WRITES && n < 20) return setTimeout(function () { again(n + 1); }, 300); if (tok === S.navTok) capi(key, req, render, onFail, onSame, true); }; again(0); }
+      return;
+    }
     cset(key, r);
-    if (tok !== S.navTok) return; // пока грузилось, человек ушёл на другой экран
     if (shown && JSON.stringify(r) === cs) { if (onSame) onSame(r); return; } // данные не изменились: не мигаем перерисовкой
     var y = window.scrollY; render(r, false); if (shown) window.scrollTo(0, y);
   });
@@ -490,7 +530,7 @@ function loadFoodDb() {
   // справочник большой и меняется редко: перекачиваем не чаще раза в 6 часов (или если его ещё нет)
   if (F.db && c && c.at && Date.now() - c.at < 6 * 3600 * 1000) return;
   if (F.dbLoading) return; F.dbLoading = true;
-  api({ api: "food_db" }).then(function (r) { F.dbLoading = false; if (r && r.ok) { r.at = Date.now(); cset("fooddb", r); prepDb(r.items); } });
+  api({ api: "food_db" }, true).then(function (r) { F.dbLoading = false; if (r && r.ok) { r.at = Date.now(); cset("fooddb", r); prepDb(r.items); } });
 }
 function searchDb(q) {
   var qw = nwords(q), out = []; if (!qw.length || !F.db) return [];
@@ -1711,10 +1751,30 @@ function demoApi(req) {
 /* ---------- запуск ---------- */
 setupTelegram();
 // Пока человек смотрит «Сегодня», тихо подгружаем остальные вкладки по очереди (не сразу все: сервер отвечает медленнее при параллельных запросах)
+/* ---------- кнопка «Назад» в шапке Телеграма: возвращает на предыдущий экран внутри приложения ---------- */
+function backAction() {
+  var sh = document.getElementById("sheet"), fs = document.getElementById("fsheet");
+  if (sh) { var c = document.getElementById("sclose") || sh.querySelector(".sheet-bg"); if (c) c.click(); return; }
+  if (fs) { var f = document.getElementById("fback") || document.getElementById("fclose"); if (f) f.click(); else closeFoodSheet(); return; }
+  var b = document.getElementById("sback") || document.getElementById("back") || document.getElementById("cback") || document.getElementById("eback");
+  if (b) { b.click(); return; }
+  if (S.sub || S.tcard) { S.tcard = null; backTo(S.tab); }
+}
+function syncBack() {
+  if (!tg || !tg.BackButton) return;
+  var deep = document.getElementById("sheet") || document.getElementById("fsheet") || S.sub || S.tcard || document.getElementById("back");
+  try { if (deep) tg.BackButton.show(); else tg.BackButton.hide(); } catch (e) {}
+}
+(function () {
+  var t = null, kick = function () { clearTimeout(t); t = setTimeout(syncBack, 60); };
+  try { if (tg && tg.BackButton) tg.BackButton.onClick(backAction); } catch (e) {}
+  try { new MutationObserver(kick).observe(document.body, { childList: true }); new MutationObserver(kick).observe(view, { childList: true }); } catch (e) {}
+})();
+
 function prefetchTabs() {
   if (S.prefetched || !S.home || !S.home.access || (S.trainer && !S.clientView)) return; S.prefetched = true;
   var jobs = [["workouts", { api: "workouts" }], ["food_0", { api: "food_day", offset: 0 }], ["progress", { api: "progress" }], ["records", { api: "records" }], ["exlist", { api: "ex_list" }]], i = 0;
-  var next = function () { if (i >= jobs.length) { loadFoodDb(); return; } var j = jobs[i++]; if (cget(j[0])) return setTimeout(next, 300); api(j[1]).then(function (r) { if (r && r.ok) cset(j[0], r); setTimeout(next, 1200); }); };
+  var next = function () { if (i >= jobs.length) { loadFoodDb(); return; } var j = jobs[i++]; if (cget(j[0])) return setTimeout(next, 300); api(j[1], true).then(function (r) { if (r && r.ok && !WRITES) cset(j[0], r); setTimeout(next, 1200); }); };
   setTimeout(next, 2500);
 }
 function startApp() {
