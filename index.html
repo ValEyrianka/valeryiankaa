@@ -267,7 +267,7 @@ function cset(k, v) { try { localStorage.setItem("c_" + UID + "_" + k, JSON.stri
 function capi(key, req, render, onFail, onSame, retried) {
   var c = cget(key), shown = false, tok = S.navTok, mut = MUT, cs = c ? JSON.stringify(c) : null;
   if (c) { shown = true; render(c, true); }
-  api(req).then(function (r) {
+  api(req, shown).then(function (r) { // экран уже показан из кеша — обновляем тихо, без полоски
     if (!r || !r.ok) { if (!shown) onFail(r); return; }
     if (tok !== S.navTok) { if (mut === MUT && !WRITES) cset(key, r); return; } // пока грузилось, человек ушёл на другой экран
     // пока грузилось, человек что-то изменил (добавил воду, продукт…): этот ответ устарел,
