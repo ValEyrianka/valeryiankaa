@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="ru">
+<html lang="ru" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<meta name="theme-color" content="#f6f2f1">
+<meta name="theme-color" content="#1a1214">
 <title>Valeryiankaa</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -192,12 +192,12 @@ function setupTelegram() {
   if (!tg) return;
   try {
     tg.ready(); tg.expand();
-    if (tg.colorScheme) document.documentElement.setAttribute("data-theme", tg.colorScheme);
+    document.documentElement.setAttribute("data-theme", "dark"); // тёмная тема по умолчанию для всех
     if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
     var bg = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim();
     if (tg.setHeaderColor) tg.setHeaderColor(bg);
     if (tg.setBackgroundColor) tg.setBackgroundColor(bg);
-    tg.onEvent("themeChanged", function () { document.documentElement.setAttribute("data-theme", tg.colorScheme); });
+    tg.onEvent("themeChanged", function () { document.documentElement.setAttribute("data-theme", "dark"); });
   } catch (e) {}
 }
 function haptic(kind) { try { if (tg && tg.HapticFeedback) { kind === "ok" ? tg.HapticFeedback.notificationOccurred("success") : tg.HapticFeedback.impactOccurred("light"); } } catch (e) {} }
@@ -1028,7 +1028,10 @@ function bmDraw(box, d) {
         var f = salmon ? Math.max(0.55, Math.min(1.12, (0.299 * r + 0.587 * g + 0.114 * bl) / 171)) : 0.96;
         var c = tint[L];
         var rr = c[0] * f, gg = c[1] * f, bb = c[2] * f;
-        if (L && L === selId) { rr = rr * 0.8 + 50; gg = gg * 0.8 + 50; bb = bb * 0.8 + 50; }
+        if (L && L === selId) { // выбранная мышца: бледно-голубая вуаль + голубой контур
+          rr = rr * 0.58 + 110 * 0.42; gg = gg * 0.58 + 180 * 0.42; bb = bb * 0.58 + 245 * 0.42;
+          if (lab[p - 1] !== selId || lab[p + 1] !== selId || lab[p - m.w] !== selId || lab[p + m.w] !== selId || lab[p - 2] !== selId || lab[p + 2] !== selId) { rr = 30; gg = 110; bb = 215; }
+        }
         o[i] = rr > 255 ? 255 : rr; o[i + 1] = gg > 255 ? 255 : gg; o[i + 2] = bb > 255 ? 255 : bb; o[i + 3] = a;
       }
       ctx.putImageData(out, 0, 0);
