@@ -125,6 +125,12 @@ details summary{list-style:none}details summary::-webkit-details-marker{display:
 .drops i{transition:background .35s,transform .35s}.drops i.on{transform:scale(1.08)}
 .bar.thin{height:5px}.macros{display:flex;flex-direction:column;gap:8px;margin-top:4px}.macro{font-size:14px;display:flex;flex-direction:column;gap:4px}
 .daynav{display:flex;align-items:center;gap:6px;font-size:14px;color:var(--muted)}.daynav .btn{min-height:36px;padding:4px 12px;font-size:18px}
+.mealc{border-radius:20px;padding:16px;display:flex;flex-direction:column;gap:10px;border:1px dashed var(--line);background:transparent}
+.mealc.done{border:1px solid transparent;background:var(--accent-soft)}
+.mealc .mh{display:flex;align-items:center;gap:10px}.mealc .mh b{font-size:17px}.mealc .mh .ck{margin-left:auto;color:var(--ok);font-size:20px}
+.mealc .mh .opt{margin-left:auto;font-size:12px;color:var(--muted)}
+.mealc .mi{font-size:15px;line-height:1.5}.mealc .tools{margin-top:2px}
+.mpills{display:flex;gap:8px;flex-wrap:wrap}.mpill{border-radius:20px;padding:7px 12px;font-size:14px;border:1px solid var(--line);color:var(--muted)}.mpill.on{background:var(--accent-soft);border-color:transparent;color:var(--fg)}
 .entry{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-top:1px solid var(--line)}.entry .en{min-width:0}
 .x{border:0;background:transparent;color:var(--muted);font-size:15px;min-width:44px;min-height:44px;border-radius:10px;cursor:pointer;flex:none}
 .x.sure{background:#c0463c;color:#fff;font-size:13px;padding:0 10px}
@@ -209,13 +215,14 @@ function toast(t) { var el = document.getElementById("toast"); el.textContent = 
 var KB = (function () { var u = /[?&]u=(\d+)/.exec(location.search), k = /[?&]k=([a-f0-9]{16,64})/.exec(location.search); return u && k ? { u: u[1], k: k[1] } : null; })();
 var NC = { f: false, w: false };
 function apiOnce(req) {
+  if ((req.api === "food_add" || req.api === "food_custom") && F.mealCur && !req.meal) req.meal = F.mealCur;
   req.initData = tg ? tg.initData : "";
   if (!req.initData && KB) req.kb = KB;
   var ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
   var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, 25000) : null;
   return fetch(API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(req), signal: ctrl ? ctrl.signal : undefined })
     .then(function (r) { return r.text().then(function (t) { try { return JSON.parse(t); } catch (e) { return { ok: false, error: "net", why: "ответ не JSON: " + String(t).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 90) }; } }); })
-    .then(function (j) { clearTimeout(timer); if (j && j.nc !== undefined) { NC.f = !!j.nc; NC.w = !!j.ncw; } return j; })
+    .then(function (j) { clearTimeout(timer); if (j && j.nc !== undefined) { NC.f = !!j.nc; NC.w = !!j.ncw; try { localStorage.setItem("nc_" + UID, (NC.f ? "1" : "0") + (NC.w ? "1" : "0")); } catch (e) {} } return j; })
     .catch(function (e) { clearTimeout(timer); return { ok: false, error: "net", why: e && e.name === "AbortError" ? "нет ответа 25 с" : String((e && e.message) || e).slice(0, 60) }; });
 }
 // ---- запросы: общий счётчик изменений, индикатор загрузки, защита от двойных нажатий ----
@@ -263,6 +270,7 @@ function goBot(cmd) { api({ api: "cmd", cmd: cmd }).then(function (r) { if (r &&
 
 /* ---------- кеш (мгновенный показ прошлых данных, пока грузятся новые) ---------- */
 var UID = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id) || (KB && KB.u) || "demo";
+try { var _nc = localStorage.getItem("nc_" + UID); if (_nc) { NC.f = _nc.charAt(0) === "1"; NC.w = _nc.charAt(1) === "1"; } } catch (e) {} // чтобы режим без подсчётов был виден с первого кадра
 function cget(k) { try { return JSON.parse(localStorage.getItem("c_" + UID + "_" + k) || "null"); } catch (e) { return null; } }
 function cset(k, v) { try { localStorage.setItem("c_" + UID + "_" + k, JSON.stringify(v)); } catch (e) {} }
 // render(data) вызывается сначала с сохранёнными данными, потом со свежими
@@ -500,7 +508,9 @@ function renderToday() {
   var n = h.nutrition, pct = n.goal ? Math.min(100, Math.round(n.kcal / n.goal * 100)) : 0;
   o += '<div class="card"><div class="label">🍽️ Питание</div>';
   if (NC.f) {
-    o += '<div class="muted">' + (n.entries ? 'Сегодня записано: ' + n.entries + ' ' + plural(n.entries, "приём", "приёма", "приёмов") + ' пищи 💛' : 'Пока ничего не записано') + '</div>';
+    var got = n.meals || [];
+    o += '<div class="mpills">' + MEALS.map(function (m) { return '<span class="mpill' + (got.indexOf(m) >= 0 ? ' on' : '') + '">' + MEAL_EMOJI[m] + ' ' + m + (got.indexOf(m) >= 0 ? ' ✓' : '') + '</span>'; }).join("") + '</div>' +
+      '<div class="muted">' + (n.entries ? 'Ты молодец, что отмечаешь 💛 NUMI это чувствует' : 'Отметь приём пищи, когда будет удобно. NUMI подождёт 🌸') + '</div>';
   } else if (n.goal) {
     var kleft = n.goal - n.kcal;
     o += '<div class="num">' + num(n.kcal) + '<span class="muted" style="font:14px var(--body)"> из ' + num(n.goal) + ' ккал</span></div><div class="bar"><i style="width:' + pct + '%"></i></div>' +
@@ -768,14 +778,38 @@ function macroRow(label, v, g) {
   var pct = g ? Math.min(100, Math.round(v / g * 100)) : 0;
   return '<div class="macro"><div class="row"><span>' + label + '</span><span class="muted">' + v + (g ? ' / ' + g : '') + ' г</span></div><div class="bar thin"><i style="width:' + pct + '%"></i></div></div>';
 }
+function ncMealsHtml(d) {
+  var o = '';
+  MEALS.forEach(function (m) {
+    var list = d.entries.filter(function (e) { return e.meal === m || (MEALS.indexOf(e.meal) === -1 && m === "Перекус"); });
+    var done = list.length > 0;
+    o += '<section class="mealc' + (done ? ' done' : '') + '"><div class="mh"><span style="font-size:24px">' + MEAL_EMOJI[m] + '</span><b>' + m + '</b>' + (done ? '<span class="ck">✓</span>' : (m === "Перекус" ? '<span class="opt">по желанию</span>' : '')) + '</div>';
+    list.forEach(function (e) {
+      var mark = e.name === m;
+      o += '<div class="entry" style="border-top:0;padding:2px 0"><div class="en mi">' + (mark ? 'Отмечено' : esc(e.name)) + '</div>' + (d.offset === 0 ? '<button class="x" data-del="' + e.row + '" data-name="' + esc(e.name) + '" aria-label="Удалить"' + (e.tmp ? ' disabled' : '') + '>✕</button>' : '') + '</div>';
+    });
+    if (d.offset === 0) o += '<div class="tools">' + (done ? '' : '<button class="btn primary" data-ncq="' + m + '">Отметить ✓</button>') + '<button class="btn" data-ncw="' + m + '">' + (done ? '＋ Добавить, что ела' : 'Записать, что ела') + '</button></div>';
+    o += '</section>';
+  });
+  return o;
+}
+function ncQuick(meal) {
+  F.mealOv = meal; var tmp = foodTmp(meal, 0, 0, 0, 0, 0);
+  haptic("ok"); toast("Отмечено 💛"); foodAddLocal(tmp);
+  foodQueue(function () { return api({ api: "food_custom", name: meal, kcal: "0", p: "0", f: "0", c: "0", grams: "0" }); },
+    function (r) { tmp.row = r.row; tmp.tmp = 0; },
+    function () { foodDropLocal(tmp); toast("Не получилось, попробуй ещё раз"); });
+  F.mealOv = null;
+}
 function renderFood() {
   var d = F.day, t = d.total, o = '<div class="row"><h1>Питание</h1><div class="daynav"><button class="btn" id="dprev" aria-label="Предыдущий день">‹</button><span>' + esc(d.label) + '</span><button class="btn" id="dnext" aria-label="Следующий день"' + (d.offset === 0 ? ' disabled' : '') + '>›</button></div></div>';
   var pct = d.goal ? Math.min(100, Math.round(t.kcal / d.goal * 100)) : 0, left = d.goal - t.kcal;
   if (!NC.f) o += '<section class="card"><div class="num">' + num(t.kcal) + '<span class="muted" style="font:14px var(--body)">' + (d.goal ? ' из ' + num(d.goal) + ' ккал' : ' ккал') + '</span></div>' + (d.goal ? '<div class="bar"><i style="width:' + pct + '%"></i></div><div class="muted">' + (!d.entries.length ? 'Пока пусто. Начнём с первого приёма пищи?' : left >= 0 ? 'Осталось ' + num(left) + ' ккал' : 'Норма выполнена, сверху ' + num(-left) + ' ккал') + '</div>' : '<div class="muted">Норму калорий можно задать в разделе «Ещё»</div>') +
     '<div class="macros">' + macroRow('Белки', t.protein, d.macros && d.macros.protein) + macroRow('Жиры', t.fat, d.macros && d.macros.fat) + macroRow('Углеводы', t.carbs, d.macros && d.macros.carbs) + '</div></section>';
   else o += '<section class="card"><div class="muted">Главное — регулярность и самочувствие, а не цифры 💛</div></section>';
-  if (d.offset === 0) o += '<button class="btn primary" id="fadd">Добавить продукт</button><div class="tools"><button class="btn" id="frep">Повторить вчерашнее</button><button class="btn" data-cmd="/foodphoto">📸 Распознать по фото</button></div>';
-  MEALS.forEach(function (m) {
+  if (d.offset === 0 && !NC.f) o += '<button class="btn primary" id="fadd">Добавить продукт</button><div class="tools"><button class="btn" id="frep">Повторить вчерашнее</button><button class="btn" data-cmd="/foodphoto">📸 Распознать по фото</button></div>';
+  if (NC.f) o += ncMealsHtml(d);
+  else MEALS.forEach(function (m) {
     var list = d.entries.filter(function (e) { return e.meal === m || (MEALS.indexOf(e.meal) === -1 && m === "Перекус"); });
     if (!list.length) return;
     var sum = list.reduce(function (s, e) { return s + e.kcal; }, 0);
@@ -787,7 +821,9 @@ function renderFood() {
   view.innerHTML = o;
   document.getElementById("dprev").onclick = function () { F.offset++; showFood(); };
   document.getElementById("dnext").onclick = function () { if (F.offset > 0) { F.offset--; showFood(); } };
-  var a = document.getElementById("fadd"); if (a) a.onclick = openFoodSheet;
+  var a = document.getElementById("fadd"); if (a) a.onclick = function () { openFoodSheet(); };
+  Array.prototype.forEach.call(view.querySelectorAll("[data-ncq]"), function (b) { b.onclick = function () { ncQuick(b.dataset.ncq); }; });
+  Array.prototype.forEach.call(view.querySelectorAll("[data-ncw]"), function (b) { b.onclick = function () { openFoodSheet(b.dataset.ncw); }; });
   var rp = document.getElementById("frep"); if (rp) rp.onclick = function () {
     rp.disabled = true;
     foodQueue(function () { return api({ api: "food_repeat" }); },
@@ -808,7 +844,7 @@ function foodRecalc(d) {
   d.total = { kcal: Math.round(t.kcal), protein: Math.round(t.protein), fat: Math.round(t.fat), carbs: Math.round(t.carbs) };
 }
 function foodTmp(name, g, kcal, p, f, c) {
-  var z = NC.f; return { row: 0, tmp: 1, name: name, grams: z ? 0 : g, kcal: z ? 0 : Math.round(kcal), p: z ? 0 : r1(p), f: z ? 0 : r1(f), c: z ? 0 : r1(c), meal: mealNow() };
+  var z = NC.f; return { row: 0, tmp: 1, name: name, grams: z ? 0 : g, kcal: z ? 0 : Math.round(kcal), p: z ? 0 : r1(p), f: z ? 0 : r1(f), c: z ? 0 : r1(c), meal: F.mealOv || mealNow() };
 }
 function foodAfterLocal() {
   var d = F.day; if (!d) return;
@@ -821,7 +857,8 @@ function foodDropLocal(e) { if (!F.day) return; var i = F.day.entries.indexOf(e)
 // очередь: следующая запись уходит только после предыдущей; когда очередь пуста — тихо сверяем с таблицей
 function foodQueue(send, onOk, onFail) {
   FP++;
-  FQ = FQ.then(send).then(function (r) {
+  var mo = F.mealOv || null;
+  FQ = FQ.then(function () { F.mealCur = mo; return send(); }).then(function (r) {
     FP = Math.max(0, FP - 1);
     if (r && r.ok) { if (onOk) onOk(r); } else if (onFail) onFail(r);
     if (!FP) foodSync();
@@ -853,9 +890,9 @@ view.addEventListener("click", function (e) {
 });
 
 /* окно «Добавить продукт» */
-function closeFoodSheet() { var s = document.getElementById("fsheet"); if (s) s.remove(); document.body.style.overflow = ""; }
-function openFoodSheet() {
-  closeFoodSheet(); F.add = { step: "search", q: "" };
+function closeFoodSheet() { var s = document.getElementById("fsheet"); if (s) s.remove(); document.body.style.overflow = ""; setTimeout(function () { F.mealOv = null; }, 0); }
+function openFoodSheet(meal) {
+  closeFoodSheet(); F.mealOv = typeof meal === "string" ? meal : null; F.add = { step: "search", q: "" };
   var el = document.createElement("div"); el.id = "fsheet"; document.body.appendChild(el); document.body.style.overflow = "hidden";
   if (!F.sug) api({ api: "food_suggest" }).then(function (r) { if (r && r.ok) { F.sug = r; if (F.add && F.add.step === "search") drawSearch(); } });
   drawSearch();
