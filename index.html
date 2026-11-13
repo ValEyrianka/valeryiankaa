@@ -130,7 +130,10 @@ details summary{list-style:none}details summary::-webkit-details-marker{display:
 .mealc .mh{display:flex;align-items:center;gap:10px}.mealc .mh b{font-size:17px}.mealc .mh .ck{margin-left:auto;color:var(--ok);font-size:20px}
 .mealc .mh .opt{margin-left:auto;font-size:12px;color:var(--muted)}
 .mealc .mi{font-size:15px;line-height:1.5}.mealc .tools{margin-top:2px}
-.mpills{display:flex;gap:8px;flex-wrap:wrap}.mpill{border-radius:20px;padding:7px 12px;font-size:14px;border:1px solid var(--line);color:var(--muted)}.mpill.on{background:var(--accent-soft);border-color:transparent;color:var(--fg)}
+.trg{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.trt{display:flex;flex-direction:column;align-items:center;gap:2px;padding:10px 4px;border-radius:14px;border:1px solid var(--line);background:transparent;cursor:pointer;min-height:76px;font:inherit;color:var(--fg)}.trt.on{background:var(--accent-soft);border-color:transparent}.trt .te{font-size:22px;line-height:1.1}.trt .tl{font-size:12px;color:var(--muted)}.trt .tv{font-size:14px;font-weight:600}.trt .ts{font-size:11px;color:var(--muted)}
+.trc{display:flex;gap:8px;flex-wrap:wrap}.trc .nmchip,.trc .mpill{cursor:pointer}.trw{display:flex;gap:6px;align-items:flex-end;height:84px;margin-top:8px}.trw div{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:3px;font-size:11px;color:var(--muted)}.trw i{display:block;width:100%;max-width:26px;border-radius:5px;background:var(--accent);opacity:.85;min-height:3px}.trw i.z{background:var(--line);opacity:1}
+.trh{display:flex;align-items:center;gap:10px;padding:11px 12px;border:1px solid var(--line);border-radius:12px;background:transparent;font:inherit;color:var(--fg);width:100%;text-align:left;min-height:48px;cursor:pointer}.trh.on{background:var(--accent-soft);border-color:transparent}.trh .bx{width:22px;height:22px;border-radius:7px;border:2px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:14px;flex:none}.trh.on .bx{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+.mpills{display:flex;gap:8px;flex-wrap:wrap}.mpill{border-radius:20px;padding:7px 12px;font-size:14px;border:1px solid var(--line);color:var(--muted);background:transparent;cursor:pointer;min-height:36px}.mpill.on{background:var(--accent-soft);border-color:transparent;color:var(--fg)}
 .entry{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-top:1px solid var(--line)}.entry .en{min-width:0}
 .x{border:0;background:transparent;color:var(--muted);font-size:15px;min-width:44px;min-height:44px;border-radius:10px;cursor:pointer;flex:none}
 .x.sure{background:#c0463c;color:#fff;font-size:13px;padding:0 10px}
@@ -193,6 +196,8 @@ var S = { tab: "today", home: null, workouts: null, records: null, run: null };
   Object.defineProperty(S, "sub", { get: function () { return sub; }, set: function (v) { sub = v; S.navTok++; }, enumerable: true });
 })();
 
+/* показываем сбой на экране (а не молча), чтобы было видно, что именно сломалось */
+window.addEventListener("error", function (e) { try { var el = document.getElementById("toast"); if (el && e && e.message) { el.textContent = "Сбой: " + String(e.message).slice(0, 70) + (e.lineno ? " (стр. " + e.lineno + ")" : ""); el.classList.add("on"); clearTimeout(toast.t); toast.t = setTimeout(function () { el.classList.remove("on"); }, 6000); } } catch (x) {} });
 /* ---------- Телеграм ---------- */
 function setupTelegram() {
   if (!tg) return;
@@ -227,7 +232,7 @@ function apiOnce(req) {
 }
 // ---- запросы: общий счётчик изменений, индикатор загрузки, защита от двойных нажатий ----
 var MUT = 0, WRITES = 0, LOAD = 0, PENDING_W = {}, nbar = null, nbTimer = null;
-var WRITE_RE = /^(water|water_goal_set|food_add|food_del|food_repeat|food_fav|food_custom|book|book_cancel|rem_set|save|photo_log|checkin_photos|onboard_save|pay_start|mat_send|cmd|t_cat_set|t_nc_set|pet_acc|t_tpl_save|t_cat_add|t_cat_video|t_wsave|t_wdel|t_slots_add|t_slot_del|t_assign|t_copy|t_note|t_access_set|t_access_revoke|t_photos|t_report)$/;
+var WRITE_RE = /^(water|water_goal_set|food_add|food_del|food_repeat|food_fav|food_custom|food_feel_set|book|book_cancel|rem_set|save|photo_log|checkin_photos|onboard_save|pay_start|mat_send|cmd|t_cat_set|t_nc_set|pet_acc|tr_set|t_tpl_save|t_cat_add|t_cat_video|t_wsave|t_wdel|t_slots_add|t_slot_del|t_assign|t_copy|t_note|t_access_set|t_access_revoke|t_photos|t_report)$/;
 function loadStart() {
   LOAD++;
   if (LOAD === 1) { clearTimeout(nbTimer); nbTimer = setTimeout(function () { if (!nbar) { nbar = document.createElement("div"); nbar.id = "nbar"; document.body.appendChild(nbar); } nbar.className = "on"; }, 250); }
@@ -343,7 +348,7 @@ var NUMI_STAGES = [
   { n: "Силач", at: 16, sc: 0.92, v: "--n0:#d9b3f2;--n1:#f7c9de;--n2:#ffeee4;--n3:#efd9d0;--ner:#e8c26a;--nei:#2f2446" },
   { n: "Звезда", at: 21, sc: 1, v: "--n0:#a9dcff;--n1:#f5c6ec;--n2:#fff3d6;--n3:#e9e0ff;--ner:#ffd36e;--nei:#2a2a52" }
 ];
-var NUMI_SLOTS = [["head", "Голова"], ["face", "Лицо"], ["neck", "Шея"], ["hand", "В лапках"], ["back", "Спина"]];
+var NUMI_SLOTS = [["head", "Голова"], ["face", "Лицо"], ["neck", "Шея"], ["hand", "В лапках"], ["back", "Спина"], ["bg", "Фон"]];
 function numiFlower(x, y, c) { var o = '<g transform="translate(' + x + ' ' + y + ')">'; for (var i = 0; i < 5; i++) { var a = i * 72 * Math.PI / 180; o += '<circle cx="' + (Math.sin(a) * 5).toFixed(1) + '" cy="' + (-Math.cos(a) * 5).toFixed(1) + '" r="4.2" fill="' + c + '"/>'; } return o + '<circle r="3" fill="#ffd36e"/></g>'; }
 var NUMI_ACC = [
   { k: "band", n: "Повязка", s: "head", at: 2, d: '<g clip-path="url(#bc)"><path d="M52 132Q150 78 248 132" fill="none" stroke="#ff7f9a" stroke-width="11"/><path d="M52 132Q150 78 248 132" fill="none" stroke="#fff" stroke-width="2.5" stroke-dasharray="7 9" opacity=".8"/></g>' },
@@ -360,14 +365,25 @@ var NUMI_ACC = [
   { k: "trophy", n: "Кубок", s: "hand", at: 18, d: '<g transform="translate(240 226)"><path d="M-12-14h24v10q0 14-12 16-12-2-12-16z" fill="#ffd36e" stroke="#e9a93a" stroke-width="2.5"/><path d="M-12-10q-10 0-9 7 1 6 10 6M12-10q10 0 9 7-1 6-10 6" fill="none" stroke="#e9a93a" stroke-width="3"/><rect x="-3" y="12" width="6" height="8" fill="#e9a93a"/><rect x="-10" y="20" width="20" height="6" rx="2" fill="#d4922a"/><path d="M-6-10v10" stroke="#fff" stroke-opacity=".6" stroke-width="3" stroke-linecap="round"/></g>' },
   { k: "crown", n: "Корона", s: "head", at: 21, d: '<g transform="translate(150 76)"><path d="M-22 6L-24-12-11-2 0-18 11-2 24-12 22 6Z" fill="#ffd36e" stroke="#e9a93a" stroke-width="2" stroke-linejoin="round"/><circle cx="0" cy="-2" r="3" fill="#ff7f9a"/></g>' },
   { k: "halo", n: "Нимб", s: "head", at: 24, d: '<ellipse cx="150" cy="62" rx="32" ry="8" fill="none" stroke="#ffd36e" stroke-width="5"/><ellipse cx="150" cy="62" rx="32" ry="8" fill="none" stroke="#fff" stroke-opacity=".6" stroke-width="1.5"/>' }
+,
+  { k: "sleepmask", n: "Маска для сна", s: "face", at: 99, tr: ["sl", 7], d: '<path d="M58 124Q150 98 242 124" fill="none" stroke="#b9a6ff" stroke-width="8" stroke-linecap="round"/><ellipse cx="150" cy="110" rx="40" ry="19" fill="#b9a6ff" stroke="#8f7bdc" stroke-width="3"/><path d="M122 110q9 8 18 0M160 110q9 8 18 0" fill="none" stroke="#4a3a8a" stroke-width="3.5" stroke-linecap="round"/><path d="M150 96l1.6 3.4 3.4 1.6-3.4 1.6-1.6 3.4-1.6-3.4-3.4-1.6 3.4-1.6z" fill="#fff" opacity=".9"/>' },
+  { k: "badge", n: "Значок привычек", s: "neck", at: 99, tr: ["hb", 7], d: '<circle cx="150" cy="226" r="13" fill="#9a2c47" stroke="#fff" stroke-opacity=".6" stroke-width="2.5"/><path d="M143 226l5 5 9-10" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>' },
+  { k: "flower", n: "Цветочек", s: "head", at: 99, tr: ["md", 14], d: '<g transform="translate(88 98) scale(2.3)">' + numiFlower(0, 0, "#ff9fb2") + '</g>' },
+  { k: "notebook", n: "Блокнот привычек", s: "hand", at: 99, tr: ["hb", 30], d: '<g transform="rotate(-8 54 236)"><rect x="34" y="210" width="40" height="48" rx="6" fill="#fff6ec" stroke="#7a1f35" stroke-width="2.5"/><rect x="34" y="210" width="9" height="48" rx="4" fill="#7a1f35"/><path d="M50 224l3 3 6-7M50 238l3 3 6-7" fill="none" stroke="#d94f6a" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M62 225h8M62 239h8" stroke="#cfc3c6" stroke-width="2.4" stroke-linecap="round"/></g>' },
+  { k: "cape", n: "Плащ чемпионки", s: "back", at: 99, tr: ["any", 30], d: '<path d="M50 168Q14 238 52 262L248 262Q286 238 250 168Z" fill="#c93a58"/><path d="M50 168Q14 238 52 262" fill="none" stroke="#fff" stroke-opacity=".35" stroke-width="3"/><path d="M70 220Q150 246 230 220" fill="none" stroke="#ffd36e" stroke-opacity=".7" stroke-width="3" stroke-dasharray="6 8"/>' },
+  { k: "pjbg", n: "Ночное небо", s: "bg", at: 99, tr: ["sl", 30], d: '<rect x="24" y="30" width="252" height="232" rx="46" fill="#3b2f6b"/><circle cx="232" cy="72" r="20" fill="#ffe9a8"/><circle cx="240" cy="66" r="18" fill="#3b2f6b"/><g fill="#fff"><circle cx="58" cy="64" r="2.6"/><circle cx="96" cy="48" r="2"/><circle cx="170" cy="56" r="2.4"/><circle cx="52" cy="124" r="2"/><circle cx="262" cy="150" r="2.4"/><circle cx="38" cy="196" r="2.2"/></g>' }
 ];
+function numiOpen(a, lvl) { return a.tr ? NUMI_TU.indexOf(a.k) >= 0 : a.at <= lvl; }
+var NUMI_TU = [];
+var NUMI_TRL = { sl: "сон", hb: "привычки", md: "самочувствие", any: "трекеры" };
+function numiLockLbl(a) { return a.tr ? '🔒 ' + NUMI_TRL[a.tr[0]] + ' ' + a.tr[1] + ' дн.' : '🔒 ур. ' + a.at; }
 function numiAccMap(lvl, choice) {
   var out = {};
   NUMI_SLOTS.forEach(function (sl) {
-    var items = NUMI_ACC.filter(function (a) { return a.s === sl[0] && a.at <= lvl; }), c = choice && choice[sl[0]];
+    var items = NUMI_ACC.filter(function (a) { return a.s === sl[0] && numiOpen(a, lvl); }), c = choice && choice[sl[0]];
     if (c === "") return;
     if (c && items.some(function (a) { return a.k === c; })) out[sl[0]] = c;
-    else if (!c && sl[0] === "head" && items.length) out[sl[0]] = items[items.length - 1].k;
+    else if (!c && sl[0] === "head" && items.filter(function (a) { return !a.tr; }).length) { var lv = items.filter(function (a) { return !a.tr; }); out[sl[0]] = lv[lv.length - 1].k; }
   });
   return out;
 }
@@ -394,10 +410,10 @@ var NUMI_FIT = {"1": [0.903, -1.2, -12.7], "2": [0.835, 0.0, -8.8], "3": [0.777,
 function numiFit(stage) { var f = NUMI_FIT[Math.max(1, Math.min(5, stage))]; return ";transform:translate(" + f[1] + "%," + f[2] + "%) scale(" + f[0] + ")"; }
 function numiSvg(stage, state, lvl, choice) {
   var pfx = "n" + (++NUMI_UID) + "_", st = NUMI_STAGES[Math.max(0, Math.min(4, stage - 1))];
-  var am = numiAccMap(lvl || stage * 5 - 2, choice), front = "", back = "";
-  NUMI_SLOTS.forEach(function (sl) { var k = am[sl[0]]; if (!k) return; var it = NUMI_ACC.filter(function (a) { return a.k === k; })[0]; if (it) { if (sl[0] === "back") back += it.d; else front += it.d; } });
+  var am = numiAccMap(lvl || stage * 5 - 2, choice), front = "", back = "", bg = "";
+  NUMI_SLOTS.forEach(function (sl) { var k = am[sl[0]]; if (!k) return; var it = NUMI_ACC.filter(function (a) { return a.k === k; })[0]; if (it) { if (sl[0] === "bg") bg += it.d; else if (sl[0] === "back") back += it.d; else front += it.d; } });
   if (stage >= 5) back = '<defs><radialGradient id="nglw"><stop offset=".6" stop-color="#ffd36e" stop-opacity=".55"/><stop offset="1" stop-color="#ffd36e" stop-opacity="0"/></radialGradient></defs><ellipse cx="150" cy="165" rx="150" ry="118" fill="url(#nglw)"/>' + back;
-  var h = NUMI_SVG.replace("<!--ACC-->", front).replace("<!--ACCB-->", back).replace(/(id="|url\(#|href="#)(bd2|bd|rim|eye|bl|ft|bub|sh|bc|bp)\b/g, "$1" + pfx + "$2");
+  var h = NUMI_SVG.replace("<!--ACC-->", front).replace("<!--ACCB-->", back).replace('<ellipse class="shadow shd"', bg + '<ellipse class="shadow shd"').replace(/(id="|url\(#|href="#)(bd2|bd|rim|eye|bl|ft|bub|sh|bc|bp)\b/g, "$1" + pfx + "$2");
   var cls = "nm s-" + (state || "idle") + (stage >= 3 ? " l2" : "") + (stage >= 5 ? " l3" : "") + (stage >= 5 ? " glow" : "");
   h = h.replace('class="nm s-idle"', 'class="' + cls + '" style="' + numiPal(lvl || stage * 5 - 2) + numiFit(stage) + '"');
   var sub = lvl ? ((lvl - 1) % 5) + 1 : 3;
@@ -414,6 +430,7 @@ function numiState(h) {
   p = Object.assign({}, p); p.lvl = Math.max(1, Math.min(25, Math.floor(+p.lvl) || 1)); p.stage = Math.ceil(p.lvl / 5);
   p.cur = Math.max(0, +p.cur || 0); p.need = Math.max(0, +p.need || 0); p.streak = Math.max(0, +p.streak || 0); p.best = Math.max(0, +p.best || 0); p.stars = Math.max(0, +p.stars || 0); p.todayXp = +p.todayXp || 0;
   if (!p.acc || typeof p.acc !== "object") p.acc = {};
+  p.tu = Array.isArray(p.tu) ? p.tu : []; NUMI_TU = p.tu;
   var wt2 = h.water && h.water.goal ? h.water.now / h.water.goal : 1;
   var say = p.mood === "miss" ? 'Скучаю по тебе 🥺 Зайдём на тренировку?' : sleep ? 'Zzz… восстанавливаюсь 💤' : wt2 < 0.5 ? 'Хочу водички 💧' : p.todayXp === 0 && h.workout ? 'Давай потренируемся? 💪' : p.streak >= 3 ? 'Мы в серии! Так держать ✨' : 'Мы отлично справляемся 💛';
   return { p: p, sleep: sleep, sad: p.mood === "miss", say: say, state: p.mood === "miss" ? "sad" : (sleep ? "sleep" : "idle") };
@@ -449,7 +466,7 @@ function numiWardrobe(p) {
   return NUMI_SLOTS.map(function (sl) {
     var items = NUMI_ACC.filter(function (a) { return a.s === sl[0]; });
     return '<div class="nmrow"><span class="muted">' + sl[1] + '</span><div class="nmchips"><button class="nmchip' + (!am[sl[0]] ? ' on' : '') + '" data-as="' + sl[0] + '" data-ak="">нет</button>' + items.map(function (a) {
-      return a.at <= p.lvl ? '<button class="nmchip' + (am[sl[0]] === a.k ? ' on' : '') + '" data-as="' + sl[0] + '" data-ak="' + a.k + '">' + a.n + '</button>' : '<span class="nmchip lk">🔒 ур. ' + a.at + '</span>';
+      return numiOpen(a, p.lvl) ? '<button class="nmchip' + (am[sl[0]] === a.k ? ' on' : '') + '" data-as="' + sl[0] + '" data-ak="' + a.k + '">' + a.n + '</button>' : '<span class="nmchip lk">' + numiLockLbl(a) + '</span>';
     }).join('') + '</div></div>';
   }).join('');
 }
@@ -468,7 +485,7 @@ function openNumi() {
     '<div class="nmb" style="width:100%"><div class="bar"><i style="width:' + numiBar(p) + '%"></i></div></div>' +
     '<div class="muted">' + (p.max ? 'Максимальный уровень 🎉' + (p.stars ? ' · ⭐ ' + p.stars + ' ' + plural(p.stars, 'звезда', 'звезды', 'звёзд') : '') : 'До уровня ' + (p.lvl + 1) + ': ' + (p.need - p.cur) + ' XP') + '</div>' +
     '<div>' + (p.streak >= 1 ? '🔥 Серия: <b>' + p.streak + '</b> ' + plural(p.streak, "день", "дня", "дней") : 'Серия начнётся с первой активности') + (p.best > p.streak ? ' <span class="muted">· рекорд ' + p.best + '</span>' : '') + '</div></div>';
-  o += '<div class="label" style="margin-top:14px">Чем кормить NUMI</div><div class="muted" style="line-height:1.6">🏋️ Тренировка: +40 XP (до 2 в день)<br>💧 Норма воды: +15 XP' + (NC.f ? '' : '<br>🍽️ Еда записана 2+ раза: +15 XP') + '<br>🔥 Серия 3, 7, 14, 30 дней: бонус</div>';
+  o += '<div class="label" style="margin-top:14px">Чем кормить NUMI</div><div class="muted" style="line-height:1.6">🏋️ Тренировка: +40 XP (до 2 в день)<br>💧 Норма воды: +15 XP' + (NC.f ? '' : '<br>🍽️ Еда записана 2+ раза: +15 XP') + '<br>🌿 Два трекера за день: +5 XP<br>🔥 Серия 3, 7, 14, 30 дней: бонус</div>';
   o += '<div class="label" style="margin-top:14px">Гардероб</div><div id="nmwd">' + numiWardrobe(p) + '</div>';
   o += '<div class="label" style="margin-top:14px">Эволюция <span class="muted" style="text-transform:none;letter-spacing:0">· новая форма каждые 5 уровней</span></div><div class="nmtr">' + NUMI_STAGES.map(function (st, i) {
     var on = p.stage >= i + 1; return '<div class="' + (on ? '' : 'lock') + '">' + (on ? '<div class="nmmini nb' + (i + 1) + '">' + numiSvg(i + 1, "idle", st.at + 4) + '</div><div>' + st.n + '</div><div class="muted">✓</div>' : '<div class="nmmini q">?</div><div>???</div><div class="muted">ур. ' + st.at + '</div>') + '</div>';
@@ -483,6 +500,118 @@ function numiInit(h) {
   if (NUMI_PEND) { var a = NUMI_PEND; NUMI_PEND = null; setTimeout(function () { numiAct(a, el); }, 250); }
 }
 var NUMI_PEND = null, NUMI_T = 0;
+
+/* ---------- «Сегодня по плану»: следующая тренировка и план недели в одной карточке ---------- */
+function todayCardHtml(h) {
+  var w = h.workout, pl = h.plan;
+  if (!w && !pl) return '<div class="card"><div class="label">🏋️ Тренировка</div><div class="muted">Тренер ещё не назначил тебе тренировку. Загляни чуть позже.</div></div>';
+  var left = pl ? pl.items.filter(function (i) { return !i.done; }) : [];
+  var o = '<div class="card hero"><div class="row"><div class="label">🏋️ Сегодня по плану</div>' + (pl && pl.total ? '<span class="muted">неделя: ' + pl.done + ' из ' + pl.total + '</span>' : '') + '</div>';
+  var same = w && left.length === 1 && left[0].name === w.name;
+  if (pl && !same) o += '<div>' + (pl.items.length ? (left.length ? 'По плану: <b>' + left.map(function (i) { return esc(i.name); }).join(", ") + '</b>' : '✓ Сегодняшняя тренировка выполнена') : 'Сегодня по плану отдых 🌿') + '</div>';
+  if (w) {
+    o += '<h2>' + esc(w.name) + '</h2><div class="muted">Следующая в программе · ' + w.exercises + ' ' + plural(w.exercises, "упражнение", "упражнения", "упражнений") +
+      (w.lastDaysAgo != null ? ' · прошлая ' + (w.lastDaysAgo <= 0 ? 'сегодня' : w.lastDaysAgo === 1 ? 'вчера' : w.lastDaysAgo + ' ' + plural(w.lastDaysAgo, "день", "дня", "дней") + ' назад') : '') + '</div>' +
+      '<button class="btn primary" data-start="' + esc(w.id) + '">Начать</button>';
+  } else {
+    o += '<div class="muted">Тренер ещё не назначил тебе тренировку.</div>';
+  }
+  if (pl) o += '<div class="tools"><button class="btn ghost" data-go="plan">План недели →</button></div>';
+  return o + '</div>';
+}
+
+/* ---------- трекеры: сон, привычки, самочувствие, шаги ---------- */
+var TR_DEF = [["sl", "😴", "Сон"], ["hb", "✅", "Привычки"], ["md", "🙂", "Самочувствие"], ["st", "👟", "Шаги"]];
+var MOOD_E = ["", "😞", "😕", "😐", "🙂", "😄"], MOOD_T = ["", "Тяжело", "Так себе", "Нормально", "Хорошо", "Отлично"];
+function trData(h) { var p = h && h.pet; return p && p.tr ? p.tr : null; }
+function trVal(k, t) {
+  if (k === "sl") return t.sl ? String(t.sl).replace(".", ",") + ' ч' : '';
+  if (k === "hb") return t.hb && t.hb.length ? t.hb.length + '/' + (t._n || 0) : '';
+  if (k === "md") return t.md ? MOOD_E[t.md] : '';
+  return t.st ? num(t.st) : '';
+}
+function trackersCardHtml(h) {
+  var tr = trData(h); if (!tr) return '';
+  var tiles = TR_DEF.filter(function (d) { return tr.off.indexOf(d[0]) < 0 && !(d[0] === "st" && NC.f); });
+  if (!tiles.length) return '';
+  var t = Object.assign({}, tr.today, { _n: tr.habits.length });
+  return '<div class="card" id="trk"><div class="row"><div class="label">🌿 Трекеры</div><button class="btn ghost" id="trset" aria-label="Настроить трекеры">Настроить</button></div><div class="trg">' + tiles.map(function (d) {
+    var v = trVal(d[0], t), done = d[0] === "hb" ? t.hb && t.hb.length >= tr.habits.length : !!v, st = d[0] === "hb" || d[0] === "sl" || d[0] === "md" ? tr.streak[d[0]] : 0;
+    return '<button class="trt' + (done ? ' on' : '') + '" data-tr="' + d[0] + '"><span class="te">' + d[1] + '</span><span class="tl">' + d[2] + '</span><span class="tv">' + (v || '+') + '</span>' + (st >= 2 ? '<span class="ts">🔥 ' + st + '</span>' : '<span class="ts"> </span>') + '</button>';
+  }).join('') + '</div><div class="muted" style="margin-top:8px">' + (trCnt(tr) >= 2 ? 'Два трекера за день: NUMI получает +5 XP ✨' : 'Отметь два трекера за день, и NUMI получит +5 XP') + '</div></div>';
+}
+function trCnt(tr) { var t = tr.today, n = 0; if (t.sl) n++; if (t.md) n++; if (t.st) n++; if (t.hb && t.hb.length >= tr.habits.length) n++; return n; }
+function trNextReward(tr, kind) {
+  var best = null;
+  tr.rewards.forEach(function (r) { if (r.t !== kind) return; var a = NUMI_ACC.filter(function (x) { return x.k === r.k; })[0]; if (!a || NUMI_TU.indexOf(r.k) >= 0) return; if (!best || r.n < best.n) best = { n: r.n, name: a.n }; });
+  return best;
+}
+function trFoot(tr, kind) {
+  var st = tr.streak[kind], nx = trNextReward(tr, kind), o = '<div style="margin-top:14px">' + (st >= 1 ? '🔥 Серия: <b>' + st + '</b> ' + plural(st, "день", "дня", "дней") : 'Серия начнётся с первой отметки') + '</div>';
+  if (nx) o += '<div class="muted">Награда для NUMI «' + esc(nx.name) + '» через ' + Math.max(0, nx.n - st) + ' ' + plural(Math.max(0, nx.n - st), "день", "дня", "дней") + ' серии</div>';
+  return o + '<div class="muted" style="margin-top:6px">Награды открываются навсегда: если серия прервётся, предмет остаётся.</div>';
+}
+function trWeek(tr, key, max) {
+  return '<div class="label" style="margin-top:14px">Последние 7 дней</div><div class="trw">' + tr.week.map(function (d) {
+    var v = d[key], hh = v ? Math.max(8, Math.round(56 * v / max)) : 3; return '<div><i class="' + (v ? '' : 'z') + '" style="height:' + hh + 'px"></i>' + d.d.slice(0, 2) + '</div>';
+  }).join('') + '</div>';
+}
+function trSend(req, close) {
+  var h = S.home; if (!h) return;
+  req.api = "tr_set";
+  haptic();
+  return api(req).then(function (r) {
+    if (r && r.ok && r.pet) {
+      h.pet = r.pet; cset("home", null);
+      if (r.fresh && r.fresh.length) { var a = NUMI_ACC.filter(function (x) { return x.k === r.fresh[0]; })[0]; if (a) setTimeout(function () { toast("Награда для NUMI: «" + a.n + "» 🎀 Загляни в гардероб"); haptic("ok"); }, 400); }
+      else if (r.pet.gain) setTimeout(function () { toast("+" + r.pet.gain + " XP для NUMI ✨"); }, 400);
+      if (close) close();
+      if (S.tab === "today" && !S.sub && S.home) renderToday();
+    } else toast("Не получилось сохранить, попробуй ещё раз");
+    return r;
+  });
+}
+function openTracker(kind) {
+  var h = S.home, tr = trData(h); if (!tr) return;
+  var t = tr.today;
+  if (kind === "sl") {
+    var hrs = []; for (var x = 4; x <= 11; x += 0.5) hrs.push(x);
+    openSheet("😴 Сон", '<div class="muted" style="margin-bottom:10px">Сколько часов ты спала этой ночью?</div><div class="trc">' + hrs.map(function (x) { return '<button class="mpill' + (t.sl === x ? ' on' : '') + '" data-v="' + x + '">' + String(x).replace(".", ",") + ' ч</button>'; }).join('') + '</div>' +
+      (t.sl ? '<div class="tools" style="margin-top:10px"><button class="btn ghost" data-v="0">Убрать отметку</button></div>' : '') + trWeek(tr, "sl", 10) + trFoot(tr, "sl"), function (el, close) {
+      Array.prototype.forEach.call(el.querySelectorAll("[data-v]"), function (b) { b.onclick = function () { trSend({ kind: "sleep", value: +b.dataset.v }, close); }; });
+    });
+  } else if (kind === "md") {
+    openSheet("🙂 Самочувствие", '<div class="muted" style="margin-bottom:10px">Как ты себя чувствуешь сегодня?</div><div class="trc">' + [1, 2, 3, 4, 5].map(function (x) { return '<button class="mpill' + (t.md === x ? ' on' : '') + '" data-v="' + x + '" style="font-size:16px;padding:9px 14px">' + MOOD_E[x] + ' ' + MOOD_T[x] + '</button>'; }).join('') + '</div>' +
+      (t.md ? '<div class="tools" style="margin-top:10px"><button class="btn ghost" data-v="0">Убрать отметку</button></div>' : '') + trWeek(tr, "md", 5) + trFoot(tr, "md"), function (el, close) {
+      Array.prototype.forEach.call(el.querySelectorAll("[data-v]"), function (b) { b.onclick = function () { trSend({ kind: "mood", value: +b.dataset.v }, close); }; });
+    });
+  } else if (kind === "st") {
+    openSheet("👟 Шаги", '<div class="muted" style="margin-bottom:10px">Впиши число шагов за сегодня. Его можно посмотреть в «Здоровье» на телефоне.</div><div class="tools"><input id="stv" type="number" inputmode="numeric" min="0" max="100000" placeholder="например, 8000" value="' + (t.st || '') + '" style="flex:1;min-height:48px;border:1px solid var(--line);border-radius:12px;padding:0 12px;font-size:16px;background:transparent;color:var(--fg)"><button class="btn primary" id="stok" style="width:auto;padding:0 18px">Сохранить</button></div>' + trWeek(tr, "st", Math.max.apply(null, tr.week.map(function (d) { return d.st; }).concat([1]))), function (el, close) {
+      document.getElementById("stok").onclick = function () { var v = Math.round(+document.getElementById("stv").value); if (!(v >= 0 && v <= 100000)) return toast("Введи число от 0 до 100 000"); trSend({ kind: "steps", value: v }, close); };
+    });
+  } else if (kind === "hb") {
+    var draw = function () { return tr.habits.map(function (n, i) { var on = t.hb && t.hb.indexOf(i) >= 0; return '<button class="trh' + (on ? ' on' : '') + '" data-h="' + i + '"><span class="bx">' + (on ? '✓' : '') + '</span><span>' + esc(n) + '</span></button>'; }).join(''); };
+    openSheet("✅ Привычки", '<div class="muted" style="margin-bottom:10px">Отметь, что получилось сегодня. День засчитывается, когда выполнены все.</div><div id="hbl" style="display:flex;flex-direction:column;gap:8px">' + draw() + '</div><div class="tools" style="margin-top:10px"><button class="btn ghost" id="hbe">Изменить список</button></div>' + trWeek(tr, "hb", Math.max(1, tr.habits.length)) + trFoot(tr, "hb"), function (el, close) {
+      var bind = function () { Array.prototype.forEach.call(el.querySelectorAll("[data-h]"), function (b) { b.onclick = function () { var i = +b.dataset.h; t.hb = t.hb || []; var p = t.hb.indexOf(i); if (p >= 0) t.hb.splice(p, 1); else t.hb.push(i); document.getElementById("hbl").innerHTML = draw(); bind(); trSend({ kind: "habit", value: i }, null); }; }); }; bind();
+      document.getElementById("hbe").onclick = function () { openHabitsEdit(tr); };
+    });
+  }
+}
+function openHabitsEdit(tr) {
+  var rows = function (names) { return names.map(function (n, i) { return '<input class="hin" data-i="' + i + '" maxlength="40" value="' + esc(n) + '" style="min-height:44px;border:1px solid var(--line);border-radius:12px;padding:0 12px;font-size:16px;background:transparent;color:var(--fg);width:100%;box-sizing:border-box">'; }).join(''); };
+  var names = tr.habits.slice(); while (names.length < 5) names.push("");
+  openSheet("Мои привычки", '<div class="muted" style="margin-bottom:10px">До 5 привычек. Пустые строки не учитываются.</div><div style="display:flex;flex-direction:column;gap:8px">' + rows(names) + '</div><button class="btn primary" id="hsave" style="margin-top:12px">Сохранить</button>', function (el, close) {
+    document.getElementById("hsave").onclick = function () { var v = Array.prototype.map.call(el.querySelectorAll(".hin"), function (i) { return i.value; }).filter(function (x) { return x.trim(); }); trSend({ kind: "habits_edit", names: v }, close); };
+  });
+}
+function openTrSettings(tr) {
+  openSheet("Трекеры", '<div class="muted" style="margin-bottom:10px">Выбери, какие трекеры показывать на главном экране.</div><div style="display:flex;flex-direction:column;gap:8px">' + TR_DEF.map(function (d) {
+    var on = tr.off.indexOf(d[0]) < 0; return '<button class="trh' + (on ? ' on' : '') + '" data-k="' + d[0] + '"><span class="bx">' + (on ? '✓' : '') + '</span><span>' + d[1] + ' ' + d[2] + '</span></button>';
+  }).join('') + '</div>', function (el, close) {
+    var off = tr.off.slice();
+    Array.prototype.forEach.call(el.querySelectorAll("[data-k]"), function (b) { b.onclick = function () { var k = b.dataset.k, p = off.indexOf(k); if (p >= 0) off.splice(p, 1); else off.push(k); b.classList.toggle("on"); b.querySelector(".bx").textContent = b.classList.contains("on") ? "✓" : ""; trSend({ kind: "off", off: off.slice() }, null); }; });
+  });
+}
 function renderToday() {
   var h = S.home, name = h.name ? ', ' + esc(h.name) : '';
   var o = '<div class="hdr"><div><div class="eyebrow">' + esc(h.weekday) + ', ' + esc(h.date) + '</div><h1>' + greeting() + name + '</h1></div><img class="ava" src="avatar.jpg" alt="" onerror="this.remove()"></div>';
@@ -491,25 +620,13 @@ function renderToday() {
     view.innerHTML = o + '<div class="brand">Valeryiankaa</div>'; return;
   }
   try { o += numiCardHtml(h); } catch (e) {}
-  if (h.workout) {
-    var w = h.workout;
-    o += '<div class="card hero"><div class="label">🏋️ Следующая тренировка</div><h2>' + esc(w.name) + '</h2><div class="muted">' + w.exercises + ' ' + plural(w.exercises, "упражнение", "упражнения", "упражнений") +
-      (w.lastDaysAgo != null ? ' · прошлая ' + (w.lastDaysAgo <= 0 ? 'сегодня' : w.lastDaysAgo === 1 ? 'вчера' : w.lastDaysAgo + ' ' + plural(w.lastDaysAgo, "день", "дня", "дней") + ' назад') : '') +
-      '</div><button class="btn primary" data-start="' + esc(w.id) + '">Начать</button></div>';
-  } else {
-    o += '<div class="card"><div class="label">🏋️ Тренировка</div><div class="muted">Тренер ещё не назначил тебе тренировку. Загляни чуть позже.</div></div>';
-  }
-  if (h.plan) {
-    var pl = h.plan, left = pl.items.filter(function (i) { return !i.done; }), dn = pl.items.filter(function (i) { return i.done; });
-    o += '<div class="card"><div class="row"><div class="label">📅 План недели</div><span class="muted">выполнено ' + pl.done + ' из ' + pl.total + '</span></div>' +
-      '<div>' + (pl.items.length ? (left.length ? 'По плану сегодня: <b>' + left.map(function (i) { return esc(i.name); }).join(", ") + '</b>' : '✓ Сегодняшняя тренировка выполнена') : 'Сегодня по плану отдых 🌿') + '</div>' +
-      '<div class="tools"><button class="btn" data-go="plan">Открыть план</button></div></div>';
-  }
+  o += todayCardHtml(h);
+  try { o += trackersCardHtml(h); } catch (e) {}
   var n = h.nutrition, pct = n.goal ? Math.min(100, Math.round(n.kcal / n.goal * 100)) : 0;
   o += '<div class="card"><div class="label">🍽️ Питание</div>';
   if (NC.f) {
     var got = n.meals || [];
-    o += '<div class="mpills">' + MEALS.map(function (m) { return '<span class="mpill' + (got.indexOf(m) >= 0 ? ' on' : '') + '">' + MEAL_EMOJI[m] + ' ' + m + (got.indexOf(m) >= 0 ? ' ✓' : '') + '</span>'; }).join("") + '</div>' +
+    o += '<div class="mpills">' + MEALS.map(function (m) { return '<button class="mpill' + (got.indexOf(m) >= 0 ? ' on' : '') + '" data-mealgo="' + m + '">' + MEAL_EMOJI[m] + ' ' + m + (got.indexOf(m) >= 0 ? ' ✓' : '') + '</button>'; }).join("") + '</div>' +
       '<div class="muted">' + (n.entries ? 'Ты молодец, что отмечаешь 💛 NUMI это чувствует' : 'Отметь приём пищи, когда будет удобно. NUMI подождёт 🌸') + '</div>';
   } else if (n.goal) {
     var kleft = n.goal - n.kcal;
@@ -531,8 +648,11 @@ function renderToday() {
       (h.sub.daysLeft <= 7 ? '<div class="muted">' + (h.sub.daysLeft <= 0 ? 'Заканчивается сегодня' : 'Осталось ' + h.sub.daysLeft + ' ' + plural(h.sub.daysLeft, "день", "дня", "дней")) + '</div>' : '') + '</div>';
   }
   view.innerHTML = o + '<div class="brand">Valeryiankaa</div>';
+  Array.prototype.forEach.call(view.querySelectorAll("[data-mealgo]"), function (b) { b.onclick = function () { haptic(); F.focus = b.dataset.mealgo; setTab("food"); }; });
   var ta = document.getElementById("tadd"); if (ta) ta.onclick = function () { F.pending = true; setTab("food"); };
   try { numiInit(h); } catch (e) {}
+  Array.prototype.forEach.call(view.querySelectorAll("[data-tr]"), function (b) { b.onclick = function () { openTracker(b.dataset.tr); }; });
+  var tset = document.getElementById("trset"); if (tset) tset.onclick = function () { var tr = trData(h); if (tr) openTrSettings(tr); };
   bindWater(function (w, rec) { if (S.home) S.home.water = w; if (!rec) NUMI_PEND = "drink"; if (S.tab === "today" && !S.sub && S.home) renderToday(); }, function () { return S.home && S.home.water; });
   if (h.access && !S.trainer && !DEMO_NO_TOUR && !renderToday.tourAsked) { renderToday.tourAsked = true; setTimeout(function () { if (S.tab === "today" && !S.sub) showTour(); }, 700); }
 }
@@ -783,7 +903,7 @@ function ncMealsHtml(d) {
   MEALS.forEach(function (m) {
     var list = d.entries.filter(function (e) { return e.meal === m || (MEALS.indexOf(e.meal) === -1 && m === "Перекус"); });
     var done = list.length > 0;
-    o += '<section class="mealc' + (done ? ' done' : '') + '"><div class="mh"><span style="font-size:24px">' + MEAL_EMOJI[m] + '</span><b>' + m + '</b>' + (done ? '<span class="ck">✓</span>' : (m === "Перекус" ? '<span class="opt">по желанию</span>' : '')) + '</div>';
+    o += '<section class="mealc' + (done ? ' done' : '') + '" data-mealc="' + m + '"><div class="mh"><span style="font-size:24px">' + MEAL_EMOJI[m] + '</span><b>' + m + '</b>' + (done ? '<span class="ck">✓</span>' : (m === "Перекус" ? '<span class="opt">по желанию</span>' : '')) + '</div>';
     list.forEach(function (e) {
       var mark = e.name === m;
       o += '<div class="entry" style="border-top:0;padding:2px 0"><div class="en mi">' + (mark ? 'Отмечено' : esc(e.name)) + '</div>' + (d.offset === 0 ? '<button class="x" data-del="' + e.row + '" data-name="' + esc(e.name) + '" aria-label="Удалить"' + (e.tmp ? ' disabled' : '') + '>✕</button>' : '') + '</div>';
@@ -792,6 +912,23 @@ function ncMealsHtml(d) {
     o += '</section>';
   });
   return o;
+}
+var FEEL = [["c", "😌", "Спокойно"], ["o", "🙂", "Нормально"], ["s", "😋", "Сытно"], ["h", "🍽", "Голодновато"], ["t", "😟", "Тревожно"], ["g", "😔", "Чувство вины"], ["d", "😣", "Тяжело"]];
+function ncFeelHtml() {
+  var cur = F.feel || [];
+  return '<section class="card" id="feelbox"><div class="label">💛 Как ты себя чувствуешь с едой сегодня?</div>' +
+    '<div class="muted">Без оценок и правильных ответов. Можно выбрать несколько. Это видишь ты и твой тренер: так легче поддержать.</div>' +
+    '<div class="chips">' + FEEL.map(function (f) { return '<button class="fchip' + (cur.indexOf(f[0]) >= 0 ? ' on' : '') + '" data-feel="' + f[0] + '">' + f[1] + ' ' + f[2] + '</button>'; }).join("") + '</div></section>';
+}
+function ncFeelBind() {
+  var box = document.getElementById("feelbox"); if (!box) return;
+  box.onclick = function (e) {
+    var b = e.target.closest("[data-feel]"); if (!b) return;
+    var c = b.dataset.feel, cur = (F.feel || []).slice(), i = cur.indexOf(c);
+    if (i >= 0) cur.splice(i, 1); else cur.push(c);
+    F.feel = cur; haptic(); b.classList.toggle("on", i < 0);
+    api({ api: "food_feel_set", codes: cur.join(",") }).then(function (r) { if (!r || !r.ok) toast("Не сохранилось, попробуй ещё раз"); });
+  };
 }
 function ncQuick(meal) {
   F.mealOv = meal; var tmp = foodTmp(meal, 0, 0, 0, 0, 0);
@@ -818,7 +955,13 @@ function renderFood() {
     o += '</section>';
   });
   if (d.water) o += waterHtml(d.water);
+  if (NC.f && d.offset === 0) o += ncFeelHtml();
   view.innerHTML = o;
+  if (NC.f && d.offset === 0) {
+    ncFeelBind();
+    if (!F.feelLoaded) { F.feelLoaded = true; api({ api: "food_feel_get" }, true).then(function (r) { if (r && r.ok) { F.feel = r.codes || []; var bx = document.getElementById("feelbox"); if (bx) { bx.outerHTML = ncFeelHtml(); ncFeelBind(); } } }); }
+  }
+  if (F.focus) { var fc = view.querySelector('[data-mealc="' + F.focus + '"]'); F.focus = null; if (fc) { setTimeout(function () { fc.scrollIntoView({ behavior: "smooth", block: "center" }); fc.animate([{ boxShadow: "0 0 0 3px var(--accent)" }, { boxShadow: "0 0 0 0 transparent" }], { duration: 1400 }); }, 120); } }
   document.getElementById("dprev").onclick = function () { F.offset++; showFood(); };
   document.getElementById("dnext").onclick = function () { if (F.offset > 0) { F.offset--; showFood(); } };
   var a = document.getElementById("fadd"); if (a) a.onclick = function () { openFoodSheet(); };
@@ -2221,7 +2364,7 @@ function demoPlan(req) {
 var D_PLAN = null;
 function demoApi(req) {
   var D = {
-    home: { ok: true, name: "Анна", weekday: "вторник", date: "3 ноября", access: true, sub: { until: "8 ноября", daysLeft: 5, tier: "Сопровождение" }, workout: { id: "wA", name: "Тренировка А · ноги и ягодицы", exercises: 6, count: 3, lastDaysAgo: 2 }, nutrition: { goal: 1700, kcal: 820, protein: 48, entries: 3, proteinGoal: 100 }, water: { now: 3, goal: 8 }, pet: { lvl: 8, stage: 2, xp: 1260, cur: 120, need: 280, max: false, streak: 5, best: 9, idle: 0, todayXp: 55, mood: "ok" }, booking: { day: "завтра", time: "18:00", format: "офлайн, Адлер", pending: false } },
+    home: { ok: true, name: "Анна", weekday: "вторник", date: "3 ноября", access: true, sub: { until: "8 ноября", daysLeft: 5, tier: "Сопровождение" }, workout: { id: "wA", name: "Тренировка А · ноги и ягодицы", exercises: 6, count: 3, lastDaysAgo: 2 }, nutrition: { goal: 1700, kcal: 820, protein: 48, entries: 3, proteinGoal: 100 }, water: { now: 3, goal: 8 }, pet: { lvl: 8, stage: 2, xp: 1260, cur: 120, need: 280, max: false, streak: 5, best: 9, idle: 0, todayXp: 55, mood: "ok", tu: [], tr: { today: { sl: 0, md: 4, st: 0, hb: [0] }, habits: ["Прогулка 20 минут", "Растяжка", "Без сладкого"], off: [], week: [{ d: "07.11", sl: 7, md: 4, st: 6000, hb: 3 }, { d: "08.11", sl: 6.5, md: 3, st: 0, hb: 2 }, { d: "09.11", sl: 8, md: 5, st: 9000, hb: 3 }, { d: "10.11", sl: 7, md: 4, st: 7200, hb: 3 }, { d: "11.11", sl: 5.5, md: 3, st: 4000, hb: 1 }, { d: "12.11", sl: 7.5, md: 4, st: 8300, hb: 3 }, { d: "13.11", sl: 0, md: 4, st: 0, hb: 1 }], streak: { sl: 5, hb: 1, md: 7, any: 7 }, rewards: [{ k: "sleepmask", s: "face", t: "sl", n: 7 }, { k: "pjbg", s: "bg", t: "sl", n: 30 }, { k: "badge", s: "neck", t: "hb", n: 7 }, { k: "notebook", s: "hand", t: "hb", n: 30 }, { k: "flower", s: "head", t: "md", n: 14 }, { k: "cape", s: "back", t: "any", n: 30 }] } }, booking: { day: "завтра", time: "18:00", format: "офлайн, Владикавказ", pending: false } },
     workouts: { ok: true, workouts: [{ id: "wA", name: "Тренировка А · ноги и ягодицы", exercises: 3, next: true }, { id: "wB", name: "Тренировка Б · верх", exercises: 5, next: false }] },
     workout: { ok: true, id: "wA", name: "Тренировка А · ноги и ягодицы", exercises: [
       { name: "Жим ногами в тренажёре", sets: 3, reps: "12", number: 5, last: 55, video: true, desc: "Стопы на ширине плеч, поясница прижата. Опускай платформу до угла в коленях 90°, не отрывая таз." },
@@ -2236,15 +2379,15 @@ function demoApi(req) {
     food_day: { ok: true, offset: 0, label: "Сегодня", entries: [{ row: 2, name: "Овсянка на воде", grams: 200, kcal: 140, p: 5, f: 3, c: 24, meal: "Завтрак", t: "08:10" }, { row: 3, name: "Яйцо варёное", grams: 100, kcal: 155, p: 13, f: 11, c: 1, meal: "Завтрак", t: "08:12" }, { row: 4, name: "Куриная грудка с гречкой", grams: 300, kcal: 520, p: 48, f: 8, c: 60, meal: "Обед", t: "13:40" }], total: { kcal: 815, protein: 66, fat: 22, carbs: 85 }, goal: 1700, macros: { protein: 100, fat: 55, carbs: 190 }, water: { now: 3, goal: 8 } },
     food_db: { ok: true, items: [[2, "Гречка варёная", 110, 4, 1, 21, "Крупы"], [3, "Куриная грудка", 165, 31, 3.6, 0, "Мясо"], [4, "Яблоко", 52, 0.3, 0.2, 14, "Фрукты"], [5, "Творог 5%", 121, 17, 5, 3, "Молочные"], [6, "Овсянка на воде", 70, 2.5, 1.5, 12, "Крупы"]] },
     food_suggest: { ok: true, fav: ["Гречка варёная"], recent: [{ name: "Куриная грудка", grams: 150 }, { name: "Яблоко", grams: 180 }] },
-    food_add: { ok: true, row: 9 }, food_custom: { ok: true, row: 10 }, food_del: { ok: true }, food_repeat: { ok: true, count: 3 }, food_fav: { ok: true },
+    food_feel_get: { ok: true, codes: [] }, food_feel_set: { ok: true }, food_add: { ok: true, row: 9 }, food_custom: { ok: true, row: 10 }, food_del: { ok: true }, food_repeat: { ok: true, count: 3 }, food_fav: { ok: true },
     ex_list: { ok: true, cats: ["Грудь", "Спина", "Дельты", "Руки (бицепс,трицпс,предплечья)", "Ноги и Ягодицы", "Пресс", "Функциональные/кардио/растяжка"], subs: { "Ноги и Ягодицы": ["Ноги", "Ягодицы"], "Руки (бицепс,трицпс,предплечья)": ["Бицепс", "Трицепс", "Предплечья"] },
       items: [[1, "Армейский жим", "Дельты", "", 1, 1], [2, "Жим ногами горизонтальной платформы", "Ноги и Ягодицы", "Ноги", 1, 0], [3, "Румынская тяга", "Ноги и Ягодицы", "Ягодицы", 0, 1], [4, "Присед со штангой", "Ноги и Ягодицы", "Ноги", 1, 1], [5, "Ягодичный мост", "Ноги и Ягодицы", "Ягодицы", 1, 1], [6, "Тяга верхнего блока", "Спина", "", 0, 1], [7, "Планка", "Пресс", "", 0, 1], [8, "Сгибание рук со штангой", "Руки (бицепс,трицпс,предплечья)", "Бицепс", 0, 0]] },
     ex_search: { ok: true, items: [[4, "Присед со штангой", "Ноги и Ягодицы", "Ноги", 1, 1]] },
     ex_get: { ok: true, number: 4, name: "Присед со штангой", category: "Ноги и Ягодицы", sub: "Ноги", video: true, desc: "Штанга на трапециях, стопы чуть шире плеч. Таз уходит назад и вниз, колени идут по линии носков, спина нейтральная. Вставай на выдохе." },
     history: { ok: true, items: [{ date: "03.11.2026", name: "Тренировка А · ноги и ягодицы", finished: true, results: [{ name: "Жим ногами", weight: 60 }, { name: "Румынская тяга", weight: 45 }, { name: "Планка", weight: null }] }, { date: "30.10.2026", name: "Тренировка Б · верх", finished: false, results: [{ name: "Тяга верхнего блока", weight: 35 }, { name: "Жим гантелей", weight: null }] }] },
-    book_slots: { ok: true, cancelHours: 1, mine: [{ row: 5, date: "04.11.2026", time: "18:00", label: "04.11 ср", pending: false, format: "offline", gym: "Спорт-стиль — Адлер, Свердлова 55", canCancel: true }],
+    book_slots: { ok: true, cancelHours: 1, mine: [{ row: 5, date: "04.11.2026", time: "18:00", label: "04.11 ср", pending: false, format: "offline", gym: "Кинг Фит — Владикавказ, Московская 14/1", canCancel: true }],
       dates: [{ date: "05.11.2026", label: "05.11 чт", times: [{ row: 7, time: "10:00" }, { row: 8, time: "12:00" }, { row: 9, time: "16:30" }] }, { date: "06.11.2026", label: "06.11 пт", times: [] }, { date: "07.11.2026", label: "07.11 сб", times: [{ row: 12, time: "11:00" }] }] },
-    book_options: { ok: true, date: "05.11.2026", time: "10:00", label: "05.11 чт", gyms: [{ idx: 0, name: "Спорт-стиль", address: "Адлер, Свердлова 55" }] }, book: { ok: true }, book_cancel: { ok: true },
+    book_options: { ok: true, date: "05.11.2026", time: "10:00", label: "05.11 чт", gyms: [{ idx: 0, name: "Кинг Фит", address: "Владикавказ, Московская 14/1" }] }, book: { ok: true }, book_cancel: { ok: true },
     progress: { ok: true, count: 4, height: 168, goalWeight: 62, streak: 3, firstDate: "04.10.2026", lastDate: "30.10.2026", bmiFirst: 24.8, bmiLast: 23.9,
       first: { weight: 70, arm: 30, chest: 90, waist: 75, hips: 100, thigh: 55, calf: 35, mood: 7 }, last: { weight: 67.2, arm: 30, chest: 89, waist: 71, hips: 98, thigh: 54, calf: 35, mood: 8 },
       series: [{ d: "04.10", weight: 70 }, { d: "11.10", weight: 69 }, { d: "18.10", weight: 68.4 }, { d: "30.10", weight: 67.2 }] },
@@ -2278,6 +2421,12 @@ function demoApi(req) {
   if (req.api === "water") { var dw = D.home.water; dw.now = Math.min(dw.goal, (window.DEMO_W == null ? dw.now : window.DEMO_W) + 1); window.DEMO_W = dw.now; D.water = { ok: true, water: { now: dw.now, goal: dw.goal } }; }
   else if (window.DEMO_W != null) D.home.water.now = window.DEMO_W;
   if (req.api === "pet_acc" && S.home && S.home.pet) { S.home.pet.acc = S.home.pet.acc || {}; S.home.pet.acc[req.slot] = req.key; D.pet_acc = { ok: true, pet: S.home.pet }; }
+  if (req.api === "tr_set" && S.home && S.home.pet && S.home.pet.tr) { var dt = S.home.pet.tr, tt = dt.today, nn = 0;
+    if (req.kind === "sleep") { tt.sl = req.value; dt.streak.sl = 7; } else if (req.kind === "mood") tt.md = req.value; else if (req.kind === "steps") tt.st = req.value;
+    else if (req.kind === "habit") { var q = tt.hb.indexOf(req.value); if (q >= 0) tt.hb.splice(q, 1); else tt.hb.push(req.value); } else if (req.kind === "habits_edit") dt.habits = req.names; else if (req.kind === "off") dt.off = req.off;
+    var fr = []; if (req.kind === "sleep" && dt.streak.sl >= 7 && S.home.pet.tu.indexOf("sleepmask") < 0) { S.home.pet.tu.push("sleepmask"); fr.push("sleepmask"); }
+    if (tt.sl) nn++; if (tt.md) nn++; if (tt.st) nn++; if (tt.hb.length >= dt.habits.length) nn++; S.home.pet.gain = nn >= 2 && !window.DEMO_TXP ? 5 : 0; if (S.home.pet.gain) window.DEMO_TXP = 1;
+    D.tr_set = { ok: true, pet: S.home.pet, fresh: fr }; }
   D.bodymap = D.bodymapRec; delete D.bodymapRec;
   var pr = demoPlan(req); if (pr) D[req.api] = pr;
   return new Promise(function (res) { setTimeout(function () { var r = JSON.parse(JSON.stringify(D[req.api] || { ok: false })); if (req.api === "home") { if (false) { r.access = false; r.store = { trainer: "valeryiankaa", items: [{ g: "Приложение", i: "🤖", n: "Подписка на бот", p: "500 ₽", per: "в месяц", d: "Тренировки, питание по фото, прогресс и напоминания." }, { g: "Ведение", i: "🤝", n: "Сопровождение", p: "7 000 ₽", per: "в месяц", hit: true, d: "Программа, питание, обратная связь, закрытый канал." }, { g: "Разовые услуги", i: "📋", n: "Программа (зал или дома)", p: "2 000 ₽", d: "Индивидуальная программа под твою цель." }] }; } if (/[?&]trainer=1/.test(location.search)) r.trainer = true; if (D_PLAN) r.plan = D_PLAN; } if (req.api === "water" && S.home && S.home.pet) r.pet = S.home.pet; res(r); }, 250); });
