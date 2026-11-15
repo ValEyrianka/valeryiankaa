@@ -182,6 +182,11 @@ i.done,.pgl.done{color:var(--ok)}i.missed,.pgl.missed{color:#c0463c}i.planned,.p
 <script>
 "use strict";
 var API_URL = "https://script.google.com/macros/s/AKfycbxSoib5pH11sG9oabyGSGGCQ5V-6nlZFQU4s85AHZrb96v_5fcOqvhi0Fb5d6VKlqKnHQ/exec";
+// Быстрый сервер (Cloudflare). Пока пусто, приложение работает только со старым сервером.
+// Когда он заработает, сюда вставляется его адрес. Если быстрый сервер недоступен, запрос уйдёт на старый.
+var WORKER_URL = "https://trainer-api.lerrr66.workers.dev";
+var WORKER_IDS = ["863131951"]; // у кого приложение ходит через быстрый сервер; остальные идут на старый (позже поставим "all")
+var FORCE_OLD = /[?&]be=gas/.test(location.search); // ?be=gas в ссылке принудительно возвращает старый сервер
 var tg = window.Telegram && window.Telegram.WebApp;
 var DEMO = /[?&]demo=1/.test(location.search);
 var STEPS = [1, 2.5, 5, 10];
@@ -225,7 +230,12 @@ function apiOnce(req) {
   if (!req.initData && KB) req.kb = KB;
   var ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
   var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, 25000) : null;
-  return fetch(API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(req), signal: ctrl ? ctrl.signal : undefined })
+  var body = JSON.stringify(req), useW = !!WORKER_URL && !FORCE_OLD && (WORKER_IDS === "all" || WORKER_IDS.indexOf(String(UID)) >= 0);
+  var post = function (url) { return fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: body, signal: ctrl ? ctrl.signal : undefined }); };
+  var first = post(useW ? WORKER_URL : API_URL);
+  // быстрый сервер не достучался (сети нет именно до него): один раз повторяем на старом. Таймаут не повторяем: запрос мог выполниться.
+  if (useW) first = first.catch(function (e) { if (e && e.name === "AbortError") throw e; return post(API_URL); });
+  return first
     .then(function (r) { return r.text().then(function (t) { try { return JSON.parse(t); } catch (e) { return { ok: false, error: "net", why: "ответ не JSON: " + String(t).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 90) }; } }); })
     .then(function (j) { clearTimeout(timer); if (j && j.nc !== undefined) { NC.f = !!j.nc; NC.w = !!j.ncw; try { localStorage.setItem("nc_" + UID, (NC.f ? "1" : "0") + (NC.w ? "1" : "0")); } catch (e) {} } return j; })
     .catch(function (e) { clearTimeout(timer); return { ok: false, error: "net", why: e && e.name === "AbortError" ? "нет ответа 25 с" : String((e && e.message) || e).slice(0, 60) }; });
@@ -277,6 +287,8 @@ function goBot(cmd) { api({ api: "cmd", cmd: cmd }).then(function (r) { if (r &&
 var UID = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id) || (KB && KB.u) || "demo";
 try { var _nc = localStorage.getItem("nc_" + UID); if (_nc) { NC.f = _nc.charAt(0) === "1"; NC.w = _nc.charAt(1) === "1"; } } catch (e) {} // чтобы режим без подсчётов был виден с первого кадра
 function cget(k) { try { return JSON.parse(localStorage.getItem("c_" + UID + "_" + k) || "null"); } catch (e) { return null; } }
+// Копию главного экрана не стираем: при следующем открытии она показывается сразу, свежие данные подтягиваются тихо
+function hkeep() { if (S.home) cset("home", S.home); }
 function cset(k, v) { try { localStorage.setItem("c_" + UID + "_" + k, JSON.stringify(v)); } catch (e) {} }
 // render(data) вызывается сначала с сохранёнными данными, потом со свежими
 function capi(key, req, render, onFail, onSame, retried) {
@@ -476,7 +488,7 @@ function numiPick(slot, key) {
   if (big) big.innerHTML = numiSvg(p.stage, s.state, p.lvl, p.acc);
   if (card) card.innerHTML = numiSvg(p.stage, s.state, p.lvl, p.acc);
   if (wd) wd.innerHTML = numiWardrobe(p);
-  api({ api: "pet_acc", slot: slot, key: key }).then(function (r) { if (r && r.ok && r.pet && S.home) S.home.pet = r.pet; cset("home", null); });
+  api({ api: "pet_acc", slot: slot, key: key }).then(function (r) { if (r && r.ok && r.pet && S.home) S.home.pet = r.pet; hkeep(); });
 }
 document.addEventListener("click", function (e) { var c = e.target.closest("[data-ak]"); if (c) numiPick(c.dataset.as, c.dataset.ak); });
 function openNumi() {
@@ -562,7 +574,7 @@ function trSend(req, close) {
   haptic();
   return api(req).then(function (r) {
     if (r && r.ok && r.pet) {
-      h.pet = r.pet; cset("home", null);
+      h.pet = r.pet; hkeep();
       if (r.fresh && r.fresh.length) { var a = NUMI_ACC.filter(function (x) { return x.k === r.fresh[0]; })[0]; if (a) setTimeout(function () { toast("Награда для NUMI: «" + a.n + "» 🎀 Загляни в гардероб"); haptic("ok"); }, 400); }
       else if (r.pet.gain) setTimeout(function () { toast("+" + r.pet.gain + " XP для NUMI ✨"); }, 400);
       if (close) close();
@@ -768,7 +780,7 @@ function nextEx() {
     var st = document.getElementById("svst");
     if (!x || !x.ok) { if (st) st.textContent = "Не сохранилось: открой тренировку и нажми «Завершить» ещё раз"; return toast("Не получилось сохранить тренировку"); }
     try { localStorage.removeItem("wk_" + r.id); } catch (e) {}
-    S.home = null; S.records = null; cset("home", null); cset("records", null);
+    S.home = null; S.records = null; hkeep(); cset("records", null);
     if (document.getElementById("fin")) { haptic("ok"); renderSummary(r, x.records || []); }
     else if (S.tab === "today" && !S.sub) showToday(true);
   });
@@ -781,7 +793,7 @@ function renderSummary(r, recs, pending) {
     o += '<div class="row" style="padding:10px 0;border-top:' + (k ? '1px solid var(--line)' : '0') + '"><div><div>' + esc(e.name) + '</div><div class="muted">' + (b ? fmt(b) + ' кг' : 'без веса') + '</div></div>' + (rec ? '<span class="chip">🔥 рекорд +' + fmt(Math.round((rec.weight - rec.prev) * 10) / 10) + '</span>' : '') + '</div>';
   });
   o += '</section>' + (pending ? '<div class="muted" id="svst">Сохраняю…</div>' : '') + '<button class="btn primary" id="fin">Готово</button>';
-  view.innerHTML = o; S.run = null; S.records = null; S.home = null; cset("home", null); cset("records", null);
+  view.innerHTML = o; S.run = null; S.records = null; S.home = null; hkeep(); cset("records", null);
   document.getElementById("fin").onclick = function () { setTab("today"); };
   if (recs.length) confetti();
 }
@@ -859,7 +871,7 @@ function openWaterGoal(after) {
         var rr = document.getElementById("wgr"); if (rr) rr.onclick = function () { cur = r.rec; draw(); };
         document.getElementById("wgs").onclick = function () {
           var b = this; b.disabled = true;
-          api({ api: "water_goal_set", goal: cur }).then(function (x) { if (x && x.ok) { haptic("ok"); cset("home", null); if (S.home && S.home.water) S.home.water.goal = x.goal; if (F && F.day && F.day.water) F.day.water.goal = x.goal; close(); toast("Норма: " + x.goal); if (after) after(); } else { b.disabled = false; toast("Не получилось"); } });
+          api({ api: "water_goal_set", goal: cur }).then(function (x) { if (x && x.ok) { haptic("ok"); hkeep(); if (S.home && S.home.water) S.home.water.goal = x.goal; if (F && F.day && F.day.water) F.day.water.goal = x.goal; close(); toast("Норма: " + x.goal); if (after) after(); } else { b.disabled = false; toast("Не получилось"); } });
         };
       }
       draw();
@@ -882,7 +894,7 @@ function bindWater(after, cur) {
     after({ now: w0.now + 1, goal: w0.goal }, false);
     WCHAIN = WCHAIN.then(function () { return api({ api: "water", n: Date.now() + "" + Math.random() }); }).then(function (r) {
       WP = Math.max(0, WP - 1);
-      if (r && r.ok) { cset("home", null); WKNOWN = r.water; if (r.pet && S.home) S.home.pet = r.pet; if (!WP) after(r.water, true); }
+      if (r && r.ok) { hkeep(); WKNOWN = r.water; if (r.pet && S.home) S.home.pet = r.pet; if (!WP) after(r.water, true); }
       else { toast("Не получилось, попробуй ещё раз" + whyTxt(r)); if (!WP && WKNOWN) after(WKNOWN, true); }
     }, function () { WP = Math.max(0, WP - 1); if (!WP && WKNOWN) after(WKNOWN, true); });
   };
@@ -976,7 +988,7 @@ function renderFood() {
   bindWater(function (w) { if (F.day) F.day.water = w; if (S.home) S.home.water = w; if (S.tab === "food" && !S.sub && F.day) renderFood(); }, function () { return (F.day && F.day.water) || (S.home && S.home.water); });
   if (F.pending) { F.pending = false; openFoodSheet(); }
 }
-function foodChanged() { cset("food_0", null); cset("home", null); S.home = null; F.offset = 0; showFood(); }
+function foodChanged() { cset("food_0", null); hkeep(); S.home = null; F.offset = 0; showFood(); }
 // ---- дневник питания: экран меняется сразу, запись в таблицу идёт в фоне по очереди ----
 var FQ = Promise.resolve(), FP = 0, FDELQ = [];
 function mealNow() { var h = new Date().getHours(); return h >= 5 && h < 11 ? "Завтрак" : h >= 13 && h < 16 ? "Обед" : h >= 17 && h < 23 ? "Ужин" : "Перекус"; }
@@ -1476,7 +1488,7 @@ function showCheckin() {
       if (first && !NC.w) { for (var i = 1; i < CIN_FIELDS.length; i++) if (!req[CIN_FIELDS[i][0]]) return toast("В первый раз нужны все замеры: " + CIN_FIELDS[i][1]); if (!mood) return toast("Выбери самочувствие"); if (!p.height && !req.height) return toast("Укажи рост"); }
       var b = this; b.disabled = true; b.textContent = "Сохраняю…";
       api(req).then(function (r) {
-        if (r && r.ok) { haptic("ok"); cset("progress", null); cset("home", null); S.home = null; S.prog = null; doneCheckin(r.row); }
+        if (r && r.ok) { haptic("ok"); cset("progress", null); hkeep(); S.home = null; S.prog = null; doneCheckin(r.row); }
         else { b.disabled = false; b.textContent = "Сохранить чек-ин"; var nm = { height: "рост", weight: "вес" }[r && r.field] || (r && r.field); toast(r && r.error === "bad" ? "Проверь число в поле «" + nm + "»" : r && r.error === "need" ? "Нужно заполнить: " + nm : "Не получилось, попробуй ещё раз"); }
       });
     };
@@ -1521,7 +1533,7 @@ function renderBook() {
   Array.prototype.forEach.call(view.querySelectorAll("[data-bt]"), function (b) { b.onclick = function () { BK.row = +b.dataset.bt; BK.format = ""; haptic(); pickFormat(); }; });
   Array.prototype.forEach.call(view.querySelectorAll("[data-cancel]"), function (b) { b.onclick = function () { document.getElementById("cx" + b.dataset.cancel).hidden = false; b.hidden = true; }; });
   Array.prototype.forEach.call(view.querySelectorAll("[data-cancelno]"), function (b) { b.onclick = function () { renderBook(); }; });
-  Array.prototype.forEach.call(view.querySelectorAll("[data-cancelok]"), function (b) { b.onclick = function () { var row = +b.dataset.cancelok; b.disabled = true; api({ api: "book_cancel", row: row, reason: document.getElementById("cr" + row).value }).then(function (r) { if (r && r.ok) { toast("Запись отменена"); cset("book", null); cset("home", null); S.home = null; showBook(); } else { b.disabled = false; toast(r && r.error === "late" ? "Уже поздно отменять, напиши тренеру" : "Не получилось, попробуй ещё раз"); } }); }; });
+  Array.prototype.forEach.call(view.querySelectorAll("[data-cancelok]"), function (b) { b.onclick = function () { var row = +b.dataset.cancelok; b.disabled = true; api({ api: "book_cancel", row: row, reason: document.getElementById("cr" + row).value }).then(function (r) { if (r && r.ok) { toast("Запись отменена"); cset("book", null); hkeep(); S.home = null; showBook(); } else { b.disabled = false; toast(r && r.error === "late" ? "Уже поздно отменять, напиши тренеру" : "Не получилось, попробуй ещё раз"); } }); }; });
   if (BK.row) pickFormat(true);
 }
 function pickFormat(keep) {
@@ -1539,7 +1551,7 @@ function pickFormat(keep) {
     Array.prototype.forEach.call(box.querySelectorAll("[data-bg]"), function (b) { b.onclick = function () { BK.gym = +b.dataset.bg; pickFormat(true); }; });
     var ok = document.getElementById("bkok");
     if (!keep) box.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    ok.onclick = function () { ok.disabled = true; ok.textContent = "Записываю…"; api({ api: "book", row: BK.row, format: BK.format, gym: BK.gym }).then(function (x) { if (x && x.ok) { haptic("ok"); cset("book", null); cset("home", null); S.home = null; doneBooking(r); } else { toast(x && x.error === "taken" ? "Это окно уже занято, выбери другое" : "Не получилось, попробуй ещё раз"); BK.row = 0; cset("book", null); showBook(); } }); };
+    ok.onclick = function () { ok.disabled = true; ok.textContent = "Записываю…"; api({ api: "book", row: BK.row, format: BK.format, gym: BK.gym }).then(function (x) { if (x && x.ok) { haptic("ok"); cset("book", null); hkeep(); S.home = null; doneBooking(r); } else { toast(x && x.error === "taken" ? "Это окно уже занято, выбери другое" : "Не получилось, попробуй ещё раз"); BK.row = 0; cset("book", null); showBook(); } }); };
   });
 }
 function doneBooking(r) {
@@ -1709,7 +1721,7 @@ function drawPhotoReview(r) {
   document.getElementById("plog").onclick = function () {
     var b = this; b.disabled = true; b.textContent = "Записываю…";
     api({ api: "photo_log" }).then(function (x) {
-      if (x && x.ok) { haptic("ok"); cset("home", null); S.home = null; try { localStorage.removeItem("c_" + UID + "_food_0"); } catch (e) {} toast(NC.f ? "Записано" : "Записано: " + x.kcal + " ккал"); S.sub = null; setTab("food"); }
+      if (x && x.ok) { haptic("ok"); hkeep(); S.home = null; try { localStorage.removeItem("c_" + UID + "_food_0"); } catch (e) {} toast(NC.f ? "Записано" : "Записано: " + x.kcal + " ккал"); S.sub = null; setTab("food"); }
       else { b.disabled = false; b.textContent = "Записать в дневник"; toast(x && x.error === "expired" ? "Уже записано" : "Не получилось, попробуй ещё раз"); }
     });
   };
