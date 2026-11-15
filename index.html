@@ -116,6 +116,7 @@ textarea{width:100%;border:1px solid var(--line);background:var(--bg);color:var(
 .tbl{overflow-x:auto}.tbl table{border-collapse:collapse;width:100%;font-size:14px;font-variant-numeric:tabular-nums}
 .tbl th{color:var(--muted);font-weight:500;font-size:12px;text-align:right;padding:4px 6px}.tbl td{text-align:right;padding:7px 6px;border-top:1px solid var(--line)}
 .tbl th:first-child,.tbl td:first-child{text-align:left}
+.tbl.cmp th,.tbl.cmp td{white-space:nowrap;padding:7px 4px;font-size:13px}
 details summary{list-style:none}details summary::-webkit-details-marker{display:none}
 #sheet{position:fixed;inset:0;z-index:30}.sheet-bg{position:absolute;inset:0;background:rgba(0,0,0,.45)}
 .sheet-in{position:absolute;left:0;right:0;bottom:0;background:var(--bg);border-radius:22px 22px 0 0;padding:16px max(16px,env(safe-area-inset-left,0px)) calc(16px + var(--bot))}
@@ -1922,6 +1923,60 @@ function fillClients() {
 }
 
 /* карточка клиентки */
+/* ---------- панель тренера: подробности по клиентке ---------- */
+function mealLbl(m) { return m ? esc(String(m)) : ""; }
+function openClientDays(id, name) {
+  openSheet(esc(name || "Клиентка") + ': дни', '<div class="muted" id="cdb">Загружаю…</div>', function (el, close) {
+    api({ api: "t_days", id: id, days: 14 }).then(function (r) {
+      var b = document.getElementById("cdb"); if (!b) return;
+      if (!r || !r.ok) { b.textContent = "Не получилось загрузить"; return; }
+      var o = '<div class="muted" style="margin-bottom:8px">Норма: ' + (r.goal ? num(r.goal) + ' ккал' : 'не задана') + (r.macros ? ' · Б ' + r.macros.protein + ' / Ж ' + r.macros.fat + ' / У ' + r.macros.carbs : '') + ' · вода ' + r.waterGoal + '. Нажми на день, чтобы увидеть блюда.</div>';
+      o += '<div class="tbl cmp"><table><tr><th>день</th><th>ккал</th><th>Б</th><th>вода</th><th>трен.</th><th>сон</th><th>сам.</th><th>шаги</th><th>прив.</th></tr>';
+      r.days.forEach(function (d, i) {
+        o += '<tr data-doff="' + i + '" style="cursor:pointer"><td>' + d.d + ' <span class="muted">' + d.dow + '</span></td><td>' + (d.n ? '<b>' + num(d.kcal) + '</b>' : '–') + '</td><td>' + (d.n ? d.p : '–') + '</td><td>' + (d.water || '–') + '</td><td>' + (d.w.length ? d.w.length : '–') + '</td><td>' + (d.sl ? String(d.sl).replace(".", ",") : '–') + '</td><td>' + (d.md ? MOOD_E[d.md] : '–') + '</td><td>' + (d.st ? num(d.st) : '–') + '</td><td>' + (d.hb ? d.hb + '/' + r.habits : '–') + '</td></tr>';
+      });
+      o += '</table></div>';
+      var wk = []; r.days.forEach(function (d) { d.w.forEach(function (n) { wk.push(d.d + ' — ' + esc(n)); }); });
+      if (wk.length) o += '<div class="label" style="margin-top:12px">Тренировки</div><div class="muted">' + wk.join('<br>') + '</div>';
+      b.outerHTML = o;
+      Array.prototype.forEach.call(el.querySelectorAll("[data-doff]"), function (tr) { tr.onclick = function () { openClientFood(id, name, +tr.dataset.doff); }; });
+    });
+  });
+}
+function openClientFood(id, name, off) {
+  openSheet(esc(name || "Клиентка") + ': питание', '<div class="muted" id="cfb">Загружаю…</div>', function (el, close) {
+    api({ api: "t_food", id: id, offset: off }).then(function (r) {
+      var b = document.getElementById("cfb"); if (!b) return;
+      if (!r || !r.ok) { b.textContent = "Не получилось загрузить"; return; }
+      var o = '<div class="row"><button class="btn ghost" id="cfp"' + (off >= 30 ? ' disabled' : '') + '>← раньше</button><b>' + esc(r.label) + '</b><button class="btn ghost" id="cfn"' + (off <= 0 ? ' disabled' : '') + '>позже →</button></div>';
+      o += '<div style="margin:8px 0"><b>' + num(r.total.kcal) + '</b>' + (r.goal ? ' из ' + num(r.goal) : '') + ' ккал · Б ' + r.total.protein + (r.macros ? ' / ' + r.macros.protein : '') + ' · Ж ' + r.total.fat + (r.macros ? ' / ' + r.macros.fat : '') + ' · У ' + r.total.carbs + (r.macros ? ' / ' + r.macros.carbs : '') + (r.water ? ' · вода ' + r.water.now + (r.water.goal ? '/' + r.water.goal : '') : '') + '</div>';
+      if (!r.entries.length) o += '<div class="muted">В этот день записей нет</div>';
+      var lastMeal = null;
+      r.entries.forEach(function (e) {
+        if (e.meal && e.meal !== lastMeal) { o += '<div class="label" style="margin-top:8px">' + mealLbl(e.meal) + '</div>'; lastMeal = e.meal; }
+        o += '<div class="row"><span>' + esc(e.name) + ' <span class="muted">' + (e.grams ? num(e.grams) + ' г' : '') + '</span></span><span class="muted">' + num(e.kcal) + ' ккал · Б ' + e.p + ' Ж ' + e.f + ' У ' + e.c + '</span></div>';
+      });
+      b.outerHTML = o;
+      var pv = document.getElementById("cfp"), nx = document.getElementById("cfn");
+      if (pv) pv.onclick = function () { openClientFood(id, name, off + 1); };
+      if (nx) nx.onclick = function () { openClientFood(id, name, off - 1); };
+    });
+  });
+}
+function openClientWorkouts(id, name) {
+  openSheet(esc(name || "Клиентка") + ': тренировки', '<div class="muted" id="cwb">Загружаю…</div>', function (el, close) {
+    api({ api: "t_workouts", id: id, n: 10 }).then(function (r) {
+      var b = document.getElementById("cwb"); if (!b) return;
+      if (!r || !r.ok) { b.textContent = "Не получилось загрузить"; return; }
+      if (!r.items.length) { b.textContent = "Завершённых тренировок пока нет"; return; }
+      b.outerHTML = r.items.map(function (w) {
+        return '<div class="card" style="margin:0 0 8px;padding:10px"><div class="row"><b>' + esc(w.name) + '</b><span class="muted">' + w.d + '</span></div>' + w.items.map(function (it) {
+          return '<div class="row"><span>' + esc(it.name) + '</span><span class="muted">' + (it.w ? fmt(it.w) + ' кг' : '✓') + '</span></div>' + (it.note ? '<div class="muted" style="margin:-2px 0 4px 8px">📝 ' + esc(it.note) + '</div>' : '');
+        }).join('') + '</div>';
+      }).join('');
+    });
+  });
+}
 function openCard(id) {
   S.tcard = id; window.scrollTo(0, 0);
   var shown = capi("tcl_" + id, { api: "t_client", id: id }, function (r) { if (S.tcard === id) renderCard(r); }, tfail(function () { openCard(id); }));
@@ -1958,7 +2013,9 @@ function renderCard(r) {
   if (r.best.length) { o += '<section class="card"><div class="label">Рабочие веса</div>'; r.best.forEach(function (b) { o += '<div class="row"><span>' + esc(b.name) + '</span><span><b>' + fmt(b.best) + ' кг</b>' + (b.n > 1 && b.best > b.first ? ' <span class="chip">' + sgn(b.best - b.first) + '</span>' : '') + '</span></div>'; }); o += '</section>'; }
   o += '<section class="card"><div class="label">Питание</div><div>Сегодня: <b>' + num(r.nutrition.today) + '</b>' + (r.nutrition.goal ? ' из ' + num(r.nutrition.goal) : '') + ' ккал</div>' +
     '<div class="muted">' + (r.nutrition.avg7 !== null ? 'В среднем за 7 дней: ' + num(r.nutrition.avg7) + ' ккал (' + r.nutrition.days7 + ' ' + plural(r.nutrition.days7, "день", "дня", "дней") + ' с записями)' : 'За неделю записей нет') + '</div>' +
-    '<button class="btn" data-cmd-client="' + esc(r.id) + '" style="align-self:flex-start">Дневник по дням в чате</button></section>';
+    '<div class="tools"><button class="btn primary" data-cdays="' + esc(r.id) + '" data-cname="' + esc(r.name) + '">Дни: питание, вода, сон, тренировки</button></div>' +
+    '<div class="tools"><button class="btn" data-cfood="' + esc(r.id) + '" data-cname="' + esc(r.name) + '">Что ела: блюда по дням</button><button class="btn" data-cwk="' + esc(r.id) + '" data-cname="' + esc(r.name) + '">Тренировки с весами</button></div>' +
+    '<button class="btn ghost" data-cmd-client="' + esc(r.id) + '" style="align-self:flex-start">Дневник по дням в чате</button></section>';
   if (r.profile.length) { o += '<section class="card"><details><summary class="label" style="cursor:pointer">Анкета</summary><div style="margin-top:10px;display:flex;flex-direction:column;gap:8px">'; r.profile.forEach(function (p) { o += '<div><div class="muted">' + esc(p[0]) + '</div>' + esc(p[1]) + '</div>'; }); o += '</div></details></section>'; }
   o += '<section class="card"><div class="label">Карта нагрузки</div><div class="muted">Какие мышцы клиентка реально нагружала за период.</div><button class="btn" id="bmopen" style="align-self:flex-start">Открыть карту</button></section>';
   var ncm = r.nc || {}, mood = ncm.mood || {}, mk = Object.keys(mood);
@@ -1987,6 +2044,12 @@ view.addEventListener("click", function (e) {
   if (c) return openCopySheet(c.dataset.copy, c.dataset.pname);
   var as = e.target.closest("[data-assign]");
   if (as) return openAssignSheet(as.dataset.assign);
+  var cd = e.target.closest("[data-cdays]");
+  if (cd) return openClientDays(cd.dataset.cdays, cd.dataset.cname);
+  var cf = e.target.closest("[data-cfood]");
+  if (cf) return openClientFood(cf.dataset.cfood, cf.dataset.cname, 0);
+  var cw = e.target.closest("[data-cwk]");
+  if (cw) return openClientWorkouts(cw.dataset.cwk, cw.dataset.cname);
   var d = e.target.closest("[data-cmd-client]");
   if (d) { goBot("/clientfood"); }
 });
@@ -2412,6 +2475,9 @@ function demoApi(req) {
     onboard_get: { ok: true, steps: [{ key: "goal", prompt: "Какая твоя главная цель?", skippable: false }, { key: "experience", prompt: "Какой у тебя опыт тренировок?", skippable: false }, { key: "limitations", prompt: "Есть ли травмы или ограничения?", skippable: true }, { key: "daysPerWeek", prompt: "Сколько дней в неделю готова тренироваться?", skippable: false }, { key: "targetWeight", prompt: "Какой вес хочешь?", skippable: false }] }, onboard_save: { ok: true },
     t_panel: { ok: true, active: 14, support: 6, pay: { count: 5, sum: 18400 }, noWorkout: [{ id: "1", name: "Анна К.", days: 9 }, { id: "2", name: "Ольга", days: null }], noCheckin: [{ id: "3", name: "Ирина М.", days: 12 }, { id: "1", name: "Анна К.", days: 8 }], expiring: [{ id: "4", name: "Мария", left: 2, tier: "сопровождение" }] },
     t_clients: { ok: true, clients: [{ id: "1", name: "Анна К.", tier: "Сопровождение", active: true, has: true, until: "20 ноября", left: 17, wDays: 9, cDays: 8 }, { id: "2", name: "Ольга", tier: "Бот", active: true, has: true, until: "5 ноября", left: 2, wDays: null, cDays: 3 }, { id: "3", name: "Ирина М.", tier: "Бот", active: true, has: true, until: "30 ноября", left: 27, wDays: 2, cDays: 12 }, { id: "4", name: "Мария", tier: "Сопровождение", active: false, has: true, until: "1 ноября", left: -2, wDays: 5, cDays: 20 }] },
+    t_days: { ok: true, goal: 1900, waterGoal: 8, habits: 3, macros: { protein: 110, fat: 60, carbs: 190 }, days: (function () { var o = [], dw = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"]; for (var i = 0; i < 14; i++) { var dt = new Date(Date.now() - i * 864e5), z = i === 5; o.push({ d: ("0" + dt.getDate()).slice(-2) + "." + ("0" + (dt.getMonth() + 1)).slice(-2), dow: dw[dt.getDay()], kcal: z ? 0 : 1650 + (i * 37) % 300, p: z ? 0 : 95 + i, f: z ? 0 : 55, c: z ? 0 : 170, n: z ? 0 : 5, water: z ? 0 : 6 + i % 3, w: i % 3 === 0 ? ["Тренировка A"] : [], sl: i % 4 === 1 ? 0 : 7 + (i % 3) / 2, md: i % 5 === 2 ? 0 : 3 + i % 3, st: i % 3 === 0 ? 0 : 6000 + i * 300, hb: i % 2 }); } return o; })() },
+    t_food: { ok: true, offset: 0, label: "Сегодня", entries: [{ row: 5, name: "Овсянка на воде", meal: "Завтрак", grams: 250, kcal: 160, p: 5, f: 3, c: 28 }, { row: 6, name: "Яйцо варёное", meal: "Завтрак", grams: 110, kcal: 160, p: 14, f: 11, c: 1 }, { row: 7, name: "Куриная грудка", meal: "Обед", grams: 180, kcal: 297, p: 56, f: 6, c: 0 }, { row: 8, name: "Гречка", meal: "Обед", grams: 200, kcal: 220, p: 8, f: 2, c: 44 }], total: { kcal: 837, protein: 83, fat: 22, carbs: 73 }, goal: 1900, macros: { protein: 110, fat: 60, carbs: 190 }, water: { now: 4, goal: 8 } },
+    t_workouts: { ok: true, items: [{ d: "14.11", name: "Тренировка A", items: [{ name: "Присед со штангой", w: 60, note: "Колено не болело" }, { name: "Жим лёжа", w: 40, note: "" }, { name: "Тяга верхнего блока", w: null, note: "" }] }, { d: "11.11", name: "Тренировка B", items: [{ name: "Румынская тяга", w: 55, note: "" }, { name: "Ягодичный мост", w: 70, note: "Тяжело на последних" }] }] },
     t_client: { ok: true, id: "1", name: "Анна К.", note: "Боль в колене, без выпадов", sub: { tier: "Сопровождение", until: "20 ноября", active: true }, checkins: [{ d: "04.10", weight: 70, arm: 30, chest: 90, waist: 75, hips: 100, thigh: 55 }, { d: "18.10", weight: 68.5, arm: 30, chest: 90, waist: 73, hips: 99, thigh: 55 }, { d: "26.10", weight: 67.8, arm: 30, chest: 89, waist: 72, hips: 99, thigh: 54 }], checkinCount: 3, withPhotos: 2, workouts: [{ d: "25.10", name: "Тренировка А" }, { d: "22.10", name: "Тренировка Б" }], w7: 0, w30: 6, nutrition: { today: 820, goal: 1700, avg7: 1540, days7: 5 }, profile: [["Цель", "Снижение веса"], ["Опыт", "1 год"]], best: [{ name: "Жим ногами", best: 60, first: 40, n: 6 }], programs: [{ id: "wA", name: "Тренировка А", n: 6 }] },
     t_report: { ok: true, days: 30, rows: [{ id: "1", name: "Анна К.", checkins: 3, weight: 67.8, dWeight: -2.2, waist: 72, dWaist: -3, hips: 99, dHips: -1, workouts: 6 }, { id: "2", name: "Ольга", checkins: 0, workouts: 2 }] },
     t_wget: { ok: true, id: "w1", clientId: "1", name: "Низ А", items: [{ n: 1, name: "Жим ногами горизонтальной платформе", sets: "4", reps: "10-12" }, { n: 0, name: "Румынская тяга", sets: "3", reps: "10 на ногу" }, { n: 2, name: "Планка", sets: "3", reps: "40 сек" }] },
