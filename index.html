@@ -303,7 +303,9 @@ function capi(key, req, render, onFail, onSame, retried) {
       { var again = function (n) { if (WRITES && n < 20) return setTimeout(function () { again(n + 1); }, 300); if (tok === S.navTok) capi(key, req, render, onFail, onSame, true); }; again(0); }
       return;
     }
+    var wasStale = !!r._stale; if (wasStale) delete r._stale; // быстрый сервер отдал запомненный ответ: свежий он уже подтягивает, спросим ещё раз через пару секунд
     cset(key, r);
+    if (wasStale && !retried) setTimeout(function () { if (tok === S.navTok) capi(key, req, render, onFail, onSame, true); }, 3500);
     if (shown && JSON.stringify(r) === cs) { if (onSame) onSame(r); return; } // данные не изменились: не мигаем перерисовкой
     var y = window.scrollY; render(r, false); if (shown) window.scrollTo(0, y);
   });
